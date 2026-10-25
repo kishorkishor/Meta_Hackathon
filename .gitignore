@@ -1,0 +1,22 @@
+# hidden folders, except GitHub settings
+/.*/
+!/.github/
+
+# secrets
+.env
+*.key
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# data and model weights stay out of git
+data/
+cache/
+*.pth
+*.pt
+*.ckpt
+*.tif
+*.zip
