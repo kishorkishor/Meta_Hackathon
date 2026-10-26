@@ -20,3 +20,5 @@ cache/
 *.ckpt
 *.tif
 *.zip
+*_log.txt
+demo_cache/

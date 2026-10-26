@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>What Changed Here</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<div id="app">
+  <aside id="panel">
+    <header>
+      <h1>What Changed Here</h1>
+      <button id="theme" class="ghost" title="Switch light and dark">◐</button>
+    </header>
+    <p class="lede">Pick a place and two dates. See what changed, how sure we are, and where to look first.</p>
+
+    <section>
+      <label for="demo">Start from a real event</label>
+      <select id="demo"><option value="">Choose an example…</option></select>
+      <p id="demo-story" class="muted small"></p>
+    </section>
+
+    <section class="grid2">
+      <div><label for="before">Before</label><input type="date" id="before"></div>
+      <div><label for="after">After</label><input type="date" id="after"></div>
+    </section>
+    <section class="row">
+      <button id="draw" class="ghost">Draw area</button>
+      <span id="area" class="muted small">No area yet</span>
+    </section>
+    <button id="go" class="primary" disabled>Compare</button>
+    <p id="status" class="small" role="status" aria-live="polite"></p>
+
+    <section id="results" hidden>
+      <h2>Layers</h2>
+      <div id="layers" class="chips"></div>
+      <label class="small">Change layer opacity <input type="range" id="opacity" min="0" max="100" value="85"></label>
+      <div id="legend" class="legend"></div>
+
+      <h2>Report <span id="report-source" class="tag"></span></h2>
+      <div id="report" class="report"></div>
+      <div class="row">
+        <button id="write" class="primary" title="Muse Spark checks the largest patches, sharpens outlines with SAM 3.1 and writes the report">Ask Muse Spark for the report</button>
+      </div>
+      <form id="ask" class="row" hidden>
+        <input id="question" placeholder="Ask about this area, e.g. which patch is closest to a village?" autocomplete="off">
+        <button class="ghost">Ask</button>
+      </form>
+      <div id="answers"></div>
+
+      <h2>Changed patches</h2>
+      <ol id="regions" class="regions"></ol>
+    </section>
+    <footer class="muted small">
+      Sentinel-2 from Copernicus via Earth Search. Change rules on spectral indices; outlines by SAM 3.1;
+      analysis by Muse Spark. Grey = not visible in both periods. Hatched = check by hand.
+    </footer>
+  </aside>
+  <main id="map"></main>
+  <div id="crop" hidden><img alt="Before and after crop"><button class="ghost" id="crop-close">Close</button></div>
+</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

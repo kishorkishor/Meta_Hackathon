@@ -1,0 +1,6 @@
+.*
+cache
+tests
+docs
+*_log.txt
+__pycache__

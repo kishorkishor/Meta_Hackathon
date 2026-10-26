@@ -3,7 +3,15 @@
 Hackathon: Meta Global AI Developer Hackathon, Indie track, theme "Push the Frontier".
 Build window: Oct 26 to Nov 4, 2026. Submission closes Nov 4, 9 PM ET (Nov 5, 8 AM in Dhaka).
 
-No real code goes in this repo before the hackathon starts. This file is only the plan.
+## Status
+
+* Working app: image fetcher, change rules with seasonal correction and doubt flags, regions, map page,
+  automatic report, four demo places (Bangladesh hill burns, Greece fire, Pakistan flood, Brazil clearing).
+* Muse Spark analyst and SAM 3.1 outlines are wired to the documented Model API and tested against recorded
+  response shapes; they still need a live run with an API key.
+* The change model trained on SECOND aerial imagery was tested on 60 Sentinel-2 hill cells and did not
+  separate burned from unburned ground well (AUROC 0.62), so it is not used. Spectral rules lead.
+* Next: live Meta calls, prompt tuning for the visual check, demo video.
 
 ## What we are building
 
@@ -36,7 +44,7 @@ the area.
 3. **Honest uncertainty in the report.** Muse Spark is told which areas were flagged as unsure and must
    say so, for example "2 areas could not be checked because of cloud".
 
-## Biggest risk: the change model may not work on Sentinel 2
+## Biggest risk: the change model may not work on Sentinel 2 (tested: it does not)
 
 The model learned on SECOND, which is sharp aerial imagery. Sentinel 2 pixels are 10 m, so it may do
 badly. Plan:
