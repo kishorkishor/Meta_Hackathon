@@ -12,6 +12,7 @@ from app import firms, meta_client
 from app.analysis import Analysis
 from app.refine import check_regions, refine_with_sam
 from app.report import facts
+from app.witness import second_witness
 
 SYSTEM = (
     "You are a careful Earth observation analyst. You explain what changed in an area between two dates, "
@@ -40,6 +41,12 @@ TOOLS = [
         "description": "Sharpen the outlines of the largest regions with SAM 3.1 and report how areas changed.",
         "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {
+        "name": "second_witness",
+        "description": "Ask SAM 3.1, with no hint from the detector, to find water, burn scars, trees or buildings "
+                       "in the before and after images. Returns how much of each change type SAM agrees with, "
+                       "per patch agreement, and large areas only SAM saw (worth checking by eye).",
+        "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {
         "name": "active_fires",
         "description": "NASA FIRMS fire detections inside the area over the last N days (1 to 10).",
         "parameters": {"type": "object", "properties": {"days": {"type": "integer"}}, "required": ["days"]}}},
@@ -58,6 +65,13 @@ def _run_tool(a: Analysis, name: str, args: dict):
         return {str(k): v for k, v in check_regions(a, [int(i) for i in args.get("ids", [])]).items()}
     if name == "refine_outlines":
         return a.refined or refine_with_sam(a)
+    if name == "second_witness":
+        if a.witness:
+            return a.witness
+        if a.witnesses_made >= C.MAX_WITNESS_PER_RUN:
+            return {"error": "second witness limit for this analysis reached"}
+        a.witnesses_made += 1
+        return second_witness(a)
     if name == "active_fires":
         return firms.active_fires(a.bbox, args.get("days", 7))
     return {"error": f"unknown tool {name}"}
@@ -84,9 +98,10 @@ def _loop(a: Analysis, messages: list) -> str:
 
 REPORT_TASK = (
     "Write the change report for this area. First get the facts. Then check the largest regions visually "
-    "(up to 6) and sharpen their outlines. Then write: a one sentence headline; what changed, with hectares "
-    "and how sure; what could not be checked and why; and the two or three places to look at first on the "
-    "ground, with coordinates. Keep it under 200 words.")
+    "(up to 6), sharpen their outlines, and ask SAM for a second witness. Then write: a one sentence headline; "
+    "what changed, with hectares and how sure, including where SAM agrees or not; what could not be checked "
+    "and why; and the two or three places to look at first on the ground, with coordinates. Keep it under "
+    "200 words.")
 
 
 def report_task(a: Analysis) -> str:

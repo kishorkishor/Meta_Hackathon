@@ -17,6 +17,8 @@ def facts(a, top: int = 15) -> dict:
         regs.append({k: p[k] for k in ("id", "kind", "area_ha", "confidence", "main_doubt", "center")})
         if p["id"] in a.checks:
             regs[-1]["visual_check"] = a.checks[p["id"]].get("verdict")
+        if p.get("sam_witness"):
+            regs[-1]["sam_witness"] = p["sam_witness"]["verdict"]
     return {
         "area_bbox_west_south_east_north": list(a.bbox),
         "asked_dates": {"before": str(a.before), "after": str(a.after), "search_window_days": a.window_days},
@@ -29,6 +31,7 @@ def facts(a, top: int = 15) -> dict:
         "regions_total": len(a.regions),
         "largest_regions": regs,
         "sam_refinement": {k: v for k, v in a.refined.items() if k != "masks"} or None,
+        "sam_second_witness": getattr(a, "witness", None) or None,
         "notes": a.message or None,
     }
 

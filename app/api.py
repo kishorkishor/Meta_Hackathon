@@ -8,6 +8,7 @@
     POST /api/analyze/{id}/report     Muse Spark writes the report (checks and SAM outlines on the way)
     POST /api/analyze/{id}/ask        a follow-up question
     POST /api/analyze/{id}/refine     SAM 3.1 outlines only
+    POST /api/analyze/{id}/witness    SAM 3.1 concept prompts as a second witness, with an agreement layer
     GET  /api/demos                   prepared places
     GET  /api/health
 """
@@ -212,6 +213,21 @@ def refine(run_id: str):
         _spend(a, "refines_made", C.MAX_REFINES_PER_RUN, "outline")
         try:
             refine_with_sam(a)
+        except Exception as e:
+            raise HTTPException(502, f"SAM call failed: {type(e).__name__}: {e}")
+        analysis.save(a)
+        return a.summary()
+
+
+@app.post("/api/analyze/{run_id}/witness")
+def witness(run_id: str):
+    a = _done(run_id)
+    _need_meta()
+    from app.witness import second_witness
+    with _hold(a):
+        _spend(a, "witnesses_made", C.MAX_WITNESS_PER_RUN, "second witness")
+        try:
+            second_witness(a)
         except Exception as e:
             raise HTTPException(502, f"SAM call failed: {type(e).__name__}: {e}")
         analysis.save(a)

@@ -5,7 +5,11 @@ const COLOURS = {
   "burned land": "rgb(230,85,13)", "new water": "rgb(33,113,181)", "water gone": "rgb(158,202,225)",
   "vegetation loss": "rgb(166,97,26)", "new building or bare ground": "rgb(203,24,29)",
 };
-const LAYER_NAMES = { before: "Before", after: "After", change: "Change", refined: "SAM outlines", unseen: "Not seen" };
+const LAYER_NAMES = { before: "Before", after: "After", change: "Change", refined: "SAM outlines",
+                      agreement: "SAM vs rules", unseen: "Not seen" };
+const OVERLAYS = ["change", "refined", "agreement"];   // the layers the opacity slider controls
+const AGREEMENT = { "SAM and rules agree": "rgb(46,204,113)", "only the rules": "rgb(241,196,15)",
+                    "only SAM": "rgb(155,89,182)" };
 
 const state = { bbox: null, run: null, overlays: {}, regionsLayer: null, drawing: null, health: {}, gen: 0, busy: false };
 
@@ -90,6 +94,7 @@ async function runCompare(planId = null) {
   if (planId) body.plan_id = planId;
   const gen = ++state.gen;   // any older run still polling, or report still loading, is now stale
   state.run = null;
+  state.view = null;
   $("#answers").innerHTML = "";
   state.busy = true;
   updateGo();
@@ -210,6 +215,7 @@ function clearOverlays() {
   Object.values(state.overlays).forEach((o) => map.removeLayer(o));
   state.overlays = {};
   if (state.regionsLayer) map.removeLayer(state.regionsLayer);
+  if (state.missedLayer) map.removeLayer(state.missedLayer);
 }
 
 function show(a) {
@@ -219,12 +225,14 @@ function show(a) {
   const stamp = Date.now();
   for (const name of a.layers) {
     state.overlays[name] = L.imageOverlay(`/api/analyze/${a.id}/layer/${name}?v=${stamp}`, bounds,
-      { opacity: name === "change" || name === "refined" ? $("#opacity").value / 100 : 1, interactive: false,
+      { opacity: OVERLAYS.includes(name) ? $("#opacity").value / 100 : 1, interactive: false,
         className: "pixelated" });
   }
-  const on = new Set(["after", a.layers.includes("refined") ? "refined" : "change", "unseen"]);
+  const main = state.view === "agreement" && a.layers.includes("agreement") ? "agreement"
+    : a.layers.includes("refined") ? "refined" : "change";
+  const on = new Set(["after", main, "unseen"]);
   $("#layers").innerHTML = "";
-  for (const name of ["before", "after", "change", "refined", "unseen"]) {
+  for (const name of ["before", "after", "change", "refined", "agreement", "unseen"]) {
     if (!a.layers.includes(name)) continue;
     const id = `layer-${name}`;
     const lab = document.createElement("label");
@@ -243,8 +251,11 @@ function show(a) {
 
   $("#legend").innerHTML = Object.entries(COLOURS)
     .map(([k, c]) => `<span style="--c:${c}">${k}</span>`).join("") +
-    `<span style="--c:rgba(120,120,120,.7)">not seen</span>`;
+    `<span style="--c:rgba(120,120,120,.7)">not seen</span>` +
+    (a.layers.includes("agreement") ? `<span class="sub">SAM vs rules layer</span>` +
+      Object.entries(AGREEMENT).map(([k, c]) => `<span style="--c:${c}">${k}</span>`).join("") : "");
   renderReport(a);
+  renderWitness(a);
   renderRegions(a);
   $("#results").hidden = false;
   const used = (s) => (s || []).map((x) => x.date).sort();
@@ -258,11 +269,11 @@ function toggle(name, visible) {
   if (!o) return;
   if (visible) o.addTo(map); else map.removeLayer(o);
   // keep change on top of the photos
-  ["change", "refined", "unseen"].forEach((n) => state.overlays[n] && map.hasLayer(state.overlays[n]) && state.overlays[n].bringToFront());
+  [...OVERLAYS, "unseen"].forEach((n) => state.overlays[n] && map.hasLayer(state.overlays[n]) && state.overlays[n].bringToFront());
 }
 
 $("#opacity").addEventListener("input", () => {
-  ["change", "refined"].forEach((n) => state.overlays[n] && state.overlays[n].setOpacity($("#opacity").value / 100));
+  OVERLAYS.forEach((n) => state.overlays[n] && state.overlays[n].setOpacity($("#opacity").value / 100));
 });
 
 function renderReport(a) {
@@ -289,7 +300,8 @@ function renderRegions(a) {
       `<span class="conf-${p.confidence}">${p.confidence}</span>` +
       `<div class="meta">${p.center[1].toFixed(4)}, ${p.center[0].toFixed(4)}` +
       (p.main_doubt ? ` · doubt: ${p.main_doubt}` : "") +
-      (check ? ` · visual check: ${check.verdict}` : "") + "</div>";
+      (check ? ` · visual check: ${check.verdict}` : "") +
+      (p.sam_witness ? ` · SAM: ${p.sam_witness.verdict} (${Math.round(p.sam_witness.share * 100)}%)` : "") + "</div>";
     li.addEventListener("click", () => openRegion(f));
     list.append(li);
   }
@@ -302,6 +314,53 @@ function openRegion(f) {
   $("#crop").hidden = false;
 }
 $("#crop-close").addEventListener("click", () => { $("#crop").hidden = true; });
+
+// ---------- SAM 3.1 second witness ----------
+function renderWitness(a) {
+  const w = a.witness || {};
+  const meta = state.health.meta;
+  $("#witness").disabled = !meta;
+  $("#witness").title = meta ? "" : "Set MODEL_API_KEY to use SAM 3.1";
+  $("#witness").textContent = w.calls ? "Ask SAM 3.1 again" : "Ask SAM 3.1 for a second opinion";
+  const list = $("#missed");
+  list.innerHTML = "";
+  if (state.missedLayer) map.removeLayer(state.missedLayer);
+  if (!w.calls) {
+    $("#witness-summary").textContent = w.note || "";
+    return;
+  }
+  const ha = (x) => Number(x).toLocaleString("en-US", { maximumFractionDigits: 1 });
+  const pct = w.agree_share == null ? "" : ` (${Math.round(w.agree_share * 100)}% of what the rules found)`;
+  $("#witness-summary").textContent =
+    `SAM also sees ${ha(w.both_ha)} ha of the change${pct}. It did not find ${ha(w.only_rules_ha)} ha that the ` +
+    `rules marked, and saw ${ha(w.only_sam_ha)} ha of change the rules did not.` +
+    (w.failed_concepts && w.failed_concepts.length ? ` SAM failed for: ${w.failed_concepts.join(", ")}.` : "");
+  state.missedLayer = L.layerGroup().addTo(map);
+  for (const m of w.only_sam_places || []) {
+    const [lon, lat] = m.center;
+    L.circleMarker([lat, lon], { radius: 7, color: AGREEMENT["only SAM"], weight: 2, fill: false })
+      .bindTooltip(`Only SAM: ${m.kind}, ${m.area_ha} ha`).addTo(state.missedLayer);
+    const li = el("li");
+    li.append(el("b", "Only SAM saw: "), `${m.kind}, ${m.area_ha} ha`,
+              el("div", `${lat.toFixed(4)}, ${lon.toFixed(4)} · check by eye`, "meta"));
+    li.addEventListener("click", () => map.setView([lat, lon], 15));
+    list.append(li);
+  }
+}
+
+$("#witness").addEventListener("click", async () => {
+  const run = state.run, gen = state.gen;
+  if (!run || !state.health.meta) return;
+  const current = () => gen === state.gen && state.run && state.run.id === run.id;
+  $("#witness").disabled = true;
+  $("#witness-summary").textContent = "SAM 3.1 is looking at the before and after images…";
+  try {
+    const j = await api(`/api/analyze/${run.id}/witness`, { method: "POST" });
+    if (current()) { state.view = "agreement"; show(j); }
+  } catch (e) {
+    if (current()) { $("#witness-summary").textContent = e.message; $("#witness").disabled = false; }
+  }
+});
 
 // ---------- Muse Spark ----------
 $("#write").addEventListener("click", () => writeReport());

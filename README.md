@@ -39,6 +39,10 @@ slightly shifted image make the answer a guess. A wrong "this village looks fine
 3. Gives every changed patch a confidence and the reason for any doubt: near threshold, possible image shift,
    next to cloud, dark or shadow, only one clear look. Areas not seen in both periods are shown, not hidden.
 4. **SAM 3.1** sharpens the outline of each large patch, but only inside the area the detector saw change.
+   **Second witness** (built during the hackathon): SAM 3.1 also looks for water, burn scars, trees and
+   buildings in the before and after images on its own, with no hint from the rules. The SAM vs rules layer
+   shows where both see the same change, where only the rules do, and where only SAM does; each patch says
+   whether SAM agrees, and large areas only SAM saw are listed to check by eye.
 5. **Muse Spark** acts as the analyst. With tools it reads the facts, looks at before and after crops of the
    largest patches and says whether each label looks right, asks SAM for outlines, checks NASA FIRMS fires,
    and then writes a plain report: what changed, how sure, what could not be checked, where to look first.
@@ -67,6 +71,7 @@ Tests (offline, synthetic scenes and recorded API shapes): `.venv/Scripts/python
 | `app/regions.py` | patches, areas, polygons |
 | `app/meta_client.py` | Muse Spark chat and vision, SAM 3.1 over the Responses API |
 | `app/refine.py`, `app/agent.py` | SAM outlines, visual checks, the tool calling analyst |
+| `app/witness.py` | SAM 3.1 concept prompts as a second witness, the agreement layer |
 | `app/planner.py` | question in plain words to place, dates and reasons (web search, OpenStreetMap, image check) |
 | `app/api.py`, `frontend/` | HTTP API and the map page |
 | `docs/METHOD.md` | every rule and threshold, and what the app cannot do |

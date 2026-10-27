@@ -48,6 +48,8 @@ class Analysis:
     layers: dict = field(default_factory=dict)        # name -> PNG bytes
     refined: dict = field(default_factory=dict)       # SAM results
     checks: dict = field(default_factory=dict)        # Muse Spark visual checks per region id
+    witness: dict = field(default_factory=dict)       # SAM 3.1 second witness (concept prompts) summary
+    witnesses_made: int = 0
     report: str = ""
     report_source: str = ""
     chat: list = field(default_factory=list)
@@ -76,6 +78,7 @@ class Analysis:
             out["layers"] = sorted(self.layers)
             out["refined"] = {k: v for k, v in self.refined.items() if k != "masks"}
             out["checks"] = self.checks
+            out["witness"] = self.witness
             out["report"] = self.report
             out["report_source"] = self.report_source
         return out

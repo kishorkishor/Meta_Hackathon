@@ -76,13 +76,36 @@ an edge but cannot add change the satellite did not see. If its outline overlaps
 IoU, the patch keeps the rule based outline and the disagreement is reported. Raw, kept, added, removed and
 rejected areas are all stored.
 
+**SAM 3.1 second witness** (built during the hackathon) gets no hint from the rules. It is asked, one concept
+per request as SAM requires, to find a thing in the before image and, separately, in the after image:
+
+| change type | concept | SAM's own view of the change |
+|---|---|---|
+| burned land | burn scar | found after, not before |
+| new water | water | found after, not before |
+| water gone | water | found before, not after |
+| vegetation loss | trees | found before, not after |
+| new building or bare ground | building | found after, not before |
+
+Only concepts for change types the rules found are asked (at most 4 concepts, 8 calls, 4 at a time).
+Instances scored below 0.3 are ignored, and ground not clear in both periods never counts. Each pixel is then
+"both see it", "only the rules" or "only SAM", drawn as the SAM vs rules layer. Each patch gets the share of
+it SAM also marks: agrees (at least half), partly (at least a fifth) or does not see it. Areas only SAM saw,
+1 ha or more, are listed as places to check by eye. The rules' own confidence is not changed: SAM on 20 m
+pixels is a second opinion, and both views stay visible side by side.
+
+**Ask in plain words** (built during the hackathon). Muse Spark on the Responses API, with web search grounding
+and three tools (OpenStreetMap place search, a Sentinel-2 scene count with whole tile cloud cover, submit plan),
+turns a question into an area, two dates and a reason. The plan must pass the same limits as the map form;
+a plan that fails goes back with the reason. At most 10 turns per plan and 40 plans an hour per server.
+
 **Muse Spark** works as the analyst through tool calls: facts, region details, a visual check of up to six
 patches (before and after crops with the outline drawn in, answered as JSON: agrees, disagrees or unclear),
-SAM outlines and NASA FIRMS fires. It may only use numbers its tools returned. The loop stops after 8 steps.
+SAM outlines, the SAM second witness and NASA FIRMS fires. It may only use numbers its tools returned. The loop stops after 8 steps.
 Without a Meta key the app still works and writes a plain automatic summary from the same facts.
 
 **Limits.** Two analyses download at once and up to eight wait in line; each analysis allows 3 Muse Spark
-reports, 3 SAM refinements and 30 questions, one at a time.
+reports, 3 SAM refinements, 2 second witness runs and 30 questions, one at a time.
 
 ## 7. What it cannot do
 

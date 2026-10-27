@@ -88,6 +88,21 @@ def segment(rgb: np.ndarray, boxes: list[tuple[int, int, int, int]] | None = Non
     return asyncio.run(_segment(rgb, boxes, text))
 
 
+def segment_many(jobs: list[tuple[np.ndarray, str]], at_once: int = 4) -> list:
+    """Several concept prompts (one concept per request, as SAM 3.1 requires), a few at a time.
+
+    Returns one result list per job, or the exception that job raised, in the same order.
+    """
+    async def run_all():
+        gate = asyncio.Semaphore(at_once)
+
+        async def one(rgb, text):
+            async with gate:
+                return await _segment(rgb, None, text)
+        return await asyncio.gather(*(one(rgb, text) for rgb, text in jobs), return_exceptions=True)
+    return asyncio.run(run_all())
+
+
 async def _segment(rgb, boxes, text):
     from meta_sam_parser import (PromptBox, PromptObject, FramePrompt, build_object_prompt,
                                  decode_mask_to_raster, image_segmentation_format, parse_responses_stream)
