@@ -1,6 +1,7 @@
 """HTTP API and the map page.
 
-    POST /api/analyze                 start an analysis, returns its id
+    POST /api/plan                    a question in plain words -> Muse Spark's place, dates and reasons
+    POST /api/analyze                 start an analysis (optionally from a plan), returns its id
     GET  /api/analyze/{id}            status, then layers, regions, totals and the report
     GET  /api/analyze/{id}/layer/{n}  PNG overlay: before, after, change, unseen, refined
     GET  /api/analyze/{id}/crop/{r}   before/after crops of one region (PNG, side by side)
@@ -13,6 +14,8 @@
 from __future__ import annotations
 
 import io
+import uuid
+from collections import OrderedDict
 from contextlib import contextmanager
 from datetime import date
 
@@ -37,6 +40,7 @@ class AnalyzeIn(BaseModel):
     before: date
     after: date
     window_days: int = Field(default=C.WINDOW_DAYS, ge=3, le=90)
+    plan_id: str | None = Field(default=None, max_length=40)   # set when the area came from a question
 
     @field_validator("after")
     @classmethod
@@ -48,6 +52,14 @@ class AnalyzeIn(BaseModel):
 
 class AskIn(BaseModel):
     question: str = Field(min_length=2, max_length=1000)
+
+
+class PlanIn(BaseModel):
+    question: str = Field(min_length=4, max_length=500)
+
+
+PLANS: OrderedDict[str, dict] = OrderedDict()   # newest last; kept on the server so a run cites the real plan
+MAX_PLANS_KEPT = 200
 
 
 def _get(run_id: str) -> analysis.Analysis:
@@ -91,10 +103,38 @@ def demos():
     return DEMOS
 
 
+@app.post("/api/plan")
+def make_plan(body: PlanIn):
+    """Muse Spark reads the question, finds the place and the dates, and checks there are clear images."""
+    _need_meta()
+    from app import planner
+    if not planner.allow():
+        raise HTTPException(429, "the demo has answered many questions this hour; try again later or draw an area")
+    try:
+        p = planner.plan(body.question.strip())
+    except planner.PlanError as e:
+        raise HTTPException(422, str(e))
+    except Exception as e:
+        raise HTTPException(502, f"Muse Spark call failed: {type(e).__name__}: {e}")
+    pid = uuid.uuid4().hex[:10]
+    PLANS[pid] = p
+    while len(PLANS) > MAX_PLANS_KEPT:
+        PLANS.popitem(last=False)
+    return {"id": pid, **p}
+
+
 @app.post("/api/analyze")
 def analyze(body: AnalyzeIn):
+    question, plan = "", None
+    if body.plan_id:
+        p = PLANS.get(body.plan_id)
+        if p is None or not p.get("ok"):
+            raise HTTPException(404, "unknown plan")
+        question = p["question"]
+        plan = {k: p[k] for k in ("place", "looking_for", "why", "sources")}
     try:
-        a = analysis.start((body.west, body.south, body.east, body.north), body.before, body.after, body.window_days)
+        a = analysis.start((body.west, body.south, body.east, body.north), body.before, body.after, body.window_days,
+                           question=question, plan=plan)
     except ValueError as e:
         raise HTTPException(422, str(e))
     except analysis.Busy as e:

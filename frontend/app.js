@@ -82,10 +82,12 @@ async function loadDemos() {
 ["#before", "#after"].forEach((s) => $(s).addEventListener("change", updateGo));
 
 // ---------- run ----------
-$("#go").addEventListener("click", async () => {
+// Starts a comparison of the current area and dates; resolves with the finished analysis, or null.
+async function runCompare(planId = null) {
   const [west, south, east, north] = state.bbox;
   const body = { west, south, east, north, before: $("#before").value, after: $("#after").value };
   if (state.windowDays) body.window_days = state.windowDays;
+  if (planId) body.plan_id = planId;
   const gen = ++state.gen;   // any older run still polling, or report still loading, is now stale
   state.run = null;
   $("#answers").innerHTML = "";
@@ -96,13 +98,89 @@ $("#go").addEventListener("click", async () => {
   setStatus("Starting…");
   try {
     const j = await api("/api/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    await poll(j.id, gen);
+    return await poll(j.id, gen);
   } catch (e) {
     if (gen === state.gen) setStatus(e.message, true);
+    return null;
   } finally {
     if (gen === state.gen) { state.busy = false; updateGo(); }
   }
+}
+$("#go").addEventListener("click", () => runCompare());
+
+// ---------- ask in plain words ----------
+$("#plain-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const q = $("#plain").value.trim();
+  if (q.length < 4 || state.busy) return;
+  const gen = ++state.gen;
+  state.busy = true;
+  updateGo();
+  $("#plain-go").disabled = true;
+  $("#plan").hidden = false;
+  $("#plan").textContent = "Muse Spark is finding the place and the dates, and checking for clear images…";
+  let p = null;
+  try {
+    p = await api("/api/plan", { method: "POST", headers: { "Content-Type": "application/json" },
+                                 body: JSON.stringify({ question: q }) });
+  } catch (e) {
+    if (gen === state.gen) $("#plan").textContent = e.message;
+  } finally {
+    if (gen === state.gen) { state.busy = false; updateGo(); }
+    $("#plain-go").disabled = !state.health.meta;
+  }
+  if (!p || gen !== state.gen) return;
+  renderPlan(p);
+  if (!p.ok) return;
+  $("#demo").value = "";
+  $("#demo-story").textContent = "";
+  $("#before").value = p.before;
+  $("#after").value = p.after;
+  state.windowDays = p.window_days;
+  setArea(p.bbox);
+  map.fitBounds([[p.bbox[1], p.bbox[0]], [p.bbox[3], p.bbox[2]]], { padding: [30, 30] });
+  const a = await runCompare(p.id);
+  if (a && state.run && state.run.id === a.id) writeReport();   // the report answers the question
 });
+
+function el(tag, text, cls) {
+  const e = document.createElement(tag);
+  if (text != null) e.textContent = text;
+  if (cls) e.className = cls;
+  return e;
+}
+
+function renderPlan(p) {
+  const box = $("#plan");
+  box.innerHTML = "";
+  if (!p.ok) {
+    box.append(el("p", "Muse Spark could not plan this: " + (p.reason || "no reason given")));
+  } else {
+    box.append(el("div", p.place, "place"));
+    const kinds = p.looking_for && p.looking_for.length ? `, looking for ${p.looking_for.join(", ")}` : "";
+    box.append(el("p", `Before ${p.before}, after ${p.after} (±${p.window_days} days)${kinds}.`, "small"));
+    if (p.why) box.append(el("p", p.why, "small"));
+  }
+  if (p.sources && p.sources.length) {
+    const s = el("p", "Sources: ", "small sources");
+    p.sources.forEach((src, i) => {
+      const a = el("a", src.title || src.url);
+      a.href = src.url; a.target = "_blank"; a.rel = "noopener noreferrer";
+      if (i) s.append(" · ");
+      s.append(a);
+    });
+    box.append(s);
+  }
+  if (p.steps && p.steps.length) {
+    const d = el("details");
+    d.append(el("summary", `How Muse Spark got there (${p.steps.length} steps)`));
+    const ol = el("ol");
+    p.steps.forEach((st) => ol.append(el("li", st.text)));
+    d.append(ol);
+    box.append(d);
+  }
+  box.hidden = false;
+}
 
 function errorText(j) {
   if (typeof j.detail === "string") return j.detail;
@@ -118,11 +196,11 @@ function setStatus(text, bad = false) {
 async function poll(id, gen) {
   const t0 = Date.now();
   for (;;) {
-    if (gen !== state.gen) return;
+    if (gen !== state.gen) return null;
     const a = await api(`/api/analyze/${id}`);
-    if (gen !== state.gen) return;
-    if (a.status === "done") { show(a); return; }
-    if (a.status === "failed" || a.status === "no_imagery") { setStatus(a.message, true); return; }
+    if (gen !== state.gen) return null;
+    if (a.status === "done") { show(a); return a; }
+    if (a.status === "failed" || a.status === "no_imagery") { setStatus(a.message, true); return null; }
     setStatus(`${a.progress || a.status}… ${Math.round((Date.now() - t0) / 1000)} s`);
     await new Promise((res) => setTimeout(res, 1500));
   }
@@ -188,6 +266,8 @@ $("#opacity").addEventListener("input", () => {
 });
 
 function renderReport(a) {
+  $("#question-echo").hidden = !a.question;
+  $("#question-echo").textContent = a.question ? `You asked: ${a.question}` : "";
   $("#report").textContent = a.report || "";
   $("#report-source").textContent = a.report_source === "muse-spark" ? "Muse Spark" : "automatic summary";
   const meta = state.health.meta;
@@ -224,9 +304,11 @@ function openRegion(f) {
 $("#crop-close").addEventListener("click", () => { $("#crop").hidden = true; });
 
 // ---------- Muse Spark ----------
-$("#write").addEventListener("click", async () => {
+$("#write").addEventListener("click", () => writeReport());
+
+async function writeReport() {
   const run = state.run, gen = state.gen;
-  if (!run) return;
+  if (!run || !state.health.meta) return;
   const current = () => gen === state.gen && state.run && state.run.id === run.id;   // still the same area?
   const previous = $("#report").textContent;
   $("#write").disabled = true;
@@ -239,7 +321,7 @@ $("#write").addEventListener("click", async () => {
   } finally {
     if (current()) $("#write").disabled = !state.health.meta;
   }
-});
+}
 
 $("#ask").addEventListener("submit", async (ev) => {
   ev.preventDefault();
@@ -272,5 +354,9 @@ try { const t = localStorage.getItem("wch-theme"); if (t) setTheme(t); } catch (
 
 (async () => {
   try { state.health = await api("/api/health"); } catch (e) { state.health = {}; }
+  if (!state.health.meta) {
+    $("#plain").disabled = $("#plain-go").disabled = true;
+    $("#plain").placeholder = "Needs a Meta API key. Use an example or draw an area below.";
+  }
   await loadDemos();
 })();

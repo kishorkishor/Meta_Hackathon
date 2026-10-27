@@ -18,7 +18,7 @@ h2 { font-size: 15px; margin: 22px 0 8px; display: flex; gap: 8px; align-items: 
 .lede { margin: 6px 0 16px; color: var(--muted); }
 section { margin: 12px 0; }
 label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
-input, select { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line);
+input, select, textarea { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line);
   background: var(--bg); color: var(--text); font: inherit; }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .row { display: flex; gap: 8px; align-items: center; margin: 10px 0; }
@@ -40,6 +40,17 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .report { white-space: pre-wrap; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
 .answer { margin-top: 10px; padding: 10px 12px; border-left: 3px solid var(--accent); background: var(--bg); white-space: pre-wrap; }
 .answer b { display: block; margin-bottom: 4px; }
+textarea { resize: vertical; min-height: 58px; }
+#plain-form button { margin-top: 8px; }
+.plan { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--line); border-left: 3px solid var(--accent);
+  border-radius: 10px; background: var(--bg); }
+.plan .place { font-weight: 600; }
+.plan p { margin: 6px 0; }
+.plan details { margin-top: 6px; color: var(--muted); font-size: 13px; }
+.plan details ol { margin: 6px 0 0; padding-left: 18px; }
+.plan .sources a { color: var(--accent); word-break: break-word; }
+.or { text-align: center; margin: 14px 0 4px; }
+.question-echo { margin: 0 0 8px; font-style: italic; }
 .regions { padding-left: 0; list-style: none; margin: 0; }
 .regions li { padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; margin-bottom: 6px; cursor: pointer; }
 .regions li:hover { border-color: var(--accent); }

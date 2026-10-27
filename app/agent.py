@@ -89,8 +89,17 @@ REPORT_TASK = (
     "ground, with coordinates. Keep it under 200 words.")
 
 
+def report_task(a: Analysis) -> str:
+    if not a.question:
+        return REPORT_TASK
+    plan = a.plan or {}
+    why = f" The area and dates were chosen like this: {plan['why']}" if plan.get("why") else ""
+    return (f"A person asked: \"{a.question}\".{why} {REPORT_TASK} Make the headline a direct answer to "
+            "their question, and if the images cannot answer part of it, say which part and why.")
+
+
 def write_report(a: Analysis) -> str:
-    messages = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": REPORT_TASK}]
+    messages = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": report_task(a)}]
     text = _loop(a, messages)
     a.chat = messages[1:]
     a.report, a.report_source = text, "muse-spark"

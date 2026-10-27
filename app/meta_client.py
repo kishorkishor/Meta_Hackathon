@@ -47,6 +47,22 @@ def chat(messages: list, tools: list | None = None, json_mode: bool = False):
     return _client().chat.completions.create(**kw).choices[0].message
 
 
+def respond(input, tools: list | None = None, instructions: str | None = None,
+            previous_response_id: str | None = None):
+    """One Responses API call (needed for web search grounding, which Chat Completions does not offer).
+
+    With previous_response_id the server keeps the conversation, so `input` only carries the new items.
+    """
+    kw = {"model": C.META_CHAT_MODEL, "input": input}
+    if tools:
+        kw["tools"] = tools
+    if instructions:
+        kw["instructions"] = instructions
+    if previous_response_id:
+        kw["previous_response_id"] = previous_response_id
+    return _client().responses.create(**kw)
+
+
 def look(question: str, images: list[tuple[str, np.ndarray]]) -> dict:
     """Ask Muse Spark about labelled images. Expects a JSON answer; returns {} if it can't parse one."""
     content = [{"type": "text", "text": question}]

@@ -59,6 +59,11 @@ META_CHAT_MODEL = os.environ.get("META_CHAT_MODEL", "muse-spark-1.3")
 META_SAM_MODEL = os.environ.get("META_SAM_MODEL", "sam-3.1")
 META_TIMEOUT = float(os.environ.get("META_TIMEOUT", "90"))
 AGENT_MAX_STEPS = 8
+PLANNER_MAX_STEPS = 10        # turns the plain words planner may take before it must give a plan
+PLANS_PER_HOUR = int(os.environ.get("WCH_PLANS_PER_HOUR", "40"))   # for the whole server; each plan costs calls
+WEB_SEARCH = os.environ.get("WCH_WEB_SEARCH", "1") != "0"           # Muse Spark search grounding for event dates
+GEOCODER_URL = os.environ.get("WCH_GEOCODER_URL", "https://nominatim.openstreetmap.org/search")
+USER_AGENT = "WhatChangedHere/0.2 (github.com/kishorkishor/Meta_Hackathon)"
 
 # ---- NASA FIRMS active fires ----
 FIRMS_MAP_KEY = os.environ.get("FIRMS_MAP_KEY", "")

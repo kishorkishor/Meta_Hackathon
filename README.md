@@ -27,6 +27,12 @@ slightly shifted image make the answer a guess. A wrong "this village looks fine
 
 ## What it does
 
+0. **Ask in plain words** (built during the hackathon). Type a question such as "What did the August 2022
+   floods do to the land around Dadu in Sindh?". Muse Spark searches the web for when the event happened
+   (search grounding, with the sources shown), looks the place up in OpenStreetMap, checks that Sentinel-2 has
+   clear images near both dates, and submits a plan: the area, the two dates and why. The plan is checked in
+   code against the same limits as the map form; a plan that breaks one goes back to Muse Spark with the
+   reason so it can fix it. The comparison then runs, and the report answers the question first.
 1. Finds clear Sentinel-2 images around both dates (Earth Search, no account) and builds a cloud free median.
 2. Marks burned land, new water, water gone, vegetation loss, and new buildings or bare ground with
    simple, published spectral rules ([docs/METHOD.md](docs/METHOD.md)).
@@ -61,6 +67,7 @@ Tests (offline, synthetic scenes and recorded API shapes): `.venv/Scripts/python
 | `app/regions.py` | patches, areas, polygons |
 | `app/meta_client.py` | Muse Spark chat and vision, SAM 3.1 over the Responses API |
 | `app/refine.py`, `app/agent.py` | SAM outlines, visual checks, the tool calling analyst |
+| `app/planner.py` | question in plain words to place, dates and reasons (web search, OpenStreetMap, image check) |
 | `app/api.py`, `frontend/` | HTTP API and the map page |
 | `docs/METHOD.md` | every rule and threshold, and what the app cannot do |
 
@@ -68,6 +75,7 @@ Tests (offline, synthetic scenes and recorded API shapes): `.venv/Scripts/python
 
 * Sentinel-2 L2A: contains modified Copernicus Sentinel data, served by Element 84 Earth Search.
 * Active fires: NASA FIRMS (VIIRS 375 m).
+* Place search: OpenStreetMap Nominatim (at most one request a second, results cached).
 * The scene search, cloud mask choice and reflectance scaling are adapted from
   [Burn Before the Rain](https://github.com/kishorkishor/NASA_PROJECT) (MIT, Burn Before the Rain team),
   which also supplied the Bandarban hill burning demo.

@@ -18,6 +18,17 @@
     <p class="lede">Pick a place and two dates. See what changed, how sure we are, and where to look first.</p>
 
     <section>
+      <form id="plain-form">
+        <label for="plain">Ask in plain words</label>
+        <textarea id="plain" rows="2" maxlength="500"
+                  placeholder="e.g. What did the August 2022 floods do to the land around Dadu in Sindh?"></textarea>
+        <button id="plain-go" class="primary">Find it and compare</button>
+      </form>
+      <div id="plan" class="plan" role="status" aria-live="polite" hidden></div>
+    </section>
+    <p class="muted small or">or set it up yourself</p>
+
+    <section>
       <label for="demo">Start from a real event</label>
       <select id="demo"><option value="">Choose an example…</option></select>
       <p id="demo-story" class="muted small"></p>
@@ -41,6 +52,7 @@
       <div id="legend" class="legend"></div>
 
       <h2>Report <span id="report-source" class="tag"></span></h2>
+      <p id="question-echo" class="question-echo muted small" hidden></p>
       <div id="report" class="report"></div>
       <div class="row">
         <button id="write" class="primary" title="Muse Spark checks the largest patches, sharpens outlines with SAM 3.1 and writes the report">Ask Muse Spark for the report</button>

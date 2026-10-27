@@ -51,6 +51,8 @@ class Analysis:
     report: str = ""
     report_source: str = ""
     chat: list = field(default_factory=list)
+    question: str = ""                                # set when the run came from a question in plain words
+    plan: dict = field(default_factory=dict)          # Muse Spark's plan for that question (place, dates, why)
 
     @property
     def dir(self):
@@ -60,7 +62,7 @@ class Analysis:
         """Everything the page and the analyst need, without pixel arrays."""
         out = {"id": self.id, "status": self.status, "message": self.message, "progress": self.progress,
                "bbox": list(self.bbox), "before": str(self.before), "after": str(self.after),
-               "window_days": self.window_days}
+               "window_days": self.window_days, "question": self.question, "plan": self.plan}
         if self.grid is not None:
             out["bounds"] = [[self.grid.lat0, self.grid.lon0], [self.grid.lat1, self.grid.lon1]]
             out["size_px"] = [self.grid.width, self.grid.height]
@@ -101,10 +103,11 @@ def validate(bbox, before: date, after: date):
         raise ValueError(f"each side must be between {MIN_SIDE_KM} and {MAX_SIDE_KM:.0f} km")
 
 
-def start(bbox, before: date, after: date, window_days: int = C.WINDOW_DAYS, background: bool = True) -> Analysis:
+def start(bbox, before: date, after: date, window_days: int = C.WINDOW_DAYS, background: bool = True,
+          question: str = "", plan: dict | None = None) -> Analysis:
     bbox = tuple(round(float(v), 5) for v in bbox)
     validate(bbox, before, after)
-    a = Analysis(uuid.uuid4().hex[:10], bbox, before, after, window_days)
+    a = Analysis(uuid.uuid4().hex[:10], bbox, before, after, window_days, question=question, plan=plan or {})
     with _LOCK:
         waiting = sum(r.status in ("queued", "running") for r in RUNS.values())
         if background and waiting >= C.MAX_QUEUED_RUNS:
