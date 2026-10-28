@@ -46,7 +46,12 @@ slightly shifted image make the answer a guess. A wrong "this village looks fine
 5. **Muse Spark looks at every big patch** (built during the hackathon): before and after pictures of each
    patch of 2 ha or more, 20 at a time, and says in a fixed JSON shape whether the label looks right, what it
    looks like instead, and why. Doubted patches get a dashed edge on the map and are listed.
-6. **Muse Spark** acts as the analyst. With tools it reads the facts, looks at before and after crops of the
+6. **Field checklist** (built during the hackathon): where a team on the ground should go first. Muse Spark
+   picks up to ten stops from the patches and the places only SAM saw, and writes for each what to look for
+   on the ground and why it is on the list. Each stop has a point inside its patch, its size and the distance
+   from the previous stop. It comes as a printable page with a small form per stop, and as KML and GeoJSON
+   files to open on a phone. Without a key a plain version is written from templates.
+7. **Muse Spark** acts as the analyst. With tools it reads the facts, looks at before and after crops of the
    largest patches and says whether each label looks right, asks SAM for outlines, checks NASA FIRMS fires,
    and then writes a plain report: what changed, how sure, what could not be checked, where to look first.
    You can then ask it follow up questions about the area.
@@ -76,6 +81,7 @@ Tests (offline, synthetic scenes and recorded API shapes): `.venv/Scripts/python
 | `app/refine.py`, `app/agent.py` | SAM outlines, visual checks, the tool calling analyst |
 | `app/visual.py` | Muse Spark's visual check of every big patch (structured output) |
 | `app/witness.py` | SAM 3.1 concept prompts as a second witness, the agreement layer |
+| `app/fieldlist.py` | field checklist: stop choice, Muse Spark notes, printable page, KML and GeoJSON |
 | `app/planner.py` | question in plain words to place, dates and reasons (web search, OpenStreetMap, image check) |
 | `app/api.py`, `frontend/` | HTTP API and the map page |
 | `docs/METHOD.md` | every rule and threshold, and what the app cannot do |

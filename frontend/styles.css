@@ -71,3 +71,7 @@ footer { margin-top: 26px; }
   #map { height: 55vh; order: -1; }
   #panel { border-right: 0; }
 }
+.links { display: flex; gap: 14px; flex-wrap: wrap; margin: 4px 0 8px; }
+.links a { color: var(--accent); }
+.stop-pin { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: #fff;
+  color: #111; border: 2px solid #111; font: 700 12px/1 system-ui, sans-serif; box-sizing: border-box; }

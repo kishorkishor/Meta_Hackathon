@@ -33,6 +33,8 @@ def facts(a, top: int = 15) -> dict:
         "sam_refinement": {k: v for k, v in a.refined.items() if k != "masks"} or None,
         "sam_second_witness": getattr(a, "witness", None) or None,
         "visual_check_of_big_patches": getattr(a, "visual", None) or None,
+        "field_checklist": [{k: s[k] for k in ("rank", "ref", "kind", "area_ha", "point")}
+                            for s in (getattr(a, "checklist", None) or {}).get("stops", [])] or None,
         "notes": a.message or None,
     }
 

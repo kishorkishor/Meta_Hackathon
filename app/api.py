@@ -10,12 +10,16 @@
     POST /api/analyze/{id}/refine     SAM 3.1 outlines only
     POST /api/analyze/{id}/check      Muse Spark looks at every big patch and agrees, disagrees or is unsure
     POST /api/analyze/{id}/witness    SAM 3.1 concept prompts as a second witness, with an agreement layer
+    POST /api/analyze/{id}/field      field checklist: where to go first, what to look for, why
+    GET  /api/analyze/{id}/field.kml, field.geojson, field/map.png   the checklist for phones and print
+    GET  /field/{id}                  the printable checklist page
     GET  /api/demos                   prepared places
     GET  /api/health
 """
 from __future__ import annotations
 
 import io
+import json
 import uuid
 from collections import OrderedDict
 from contextlib import contextmanager
@@ -23,7 +27,7 @@ from datetime import date
 
 import numpy as np
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 from pydantic import BaseModel, Field, field_validator
@@ -248,6 +252,51 @@ def witness(run_id: str):
             raise HTTPException(502, f"SAM call failed: {type(e).__name__}: {e}")
         analysis.save(a)
         return a.summary()
+
+
+@app.post("/api/analyze/{run_id}/field")
+def field_checklist(run_id: str):
+    """Where to go first. Muse Spark chooses and writes it when there is a key; the plain version is free."""
+    a = _done(run_id)
+    from app.fieldlist import make_checklist
+    with _hold(a):
+        use_model = meta_client.available()
+        if use_model:
+            _spend(a, "fieldlists_made", C.MAX_FIELDLISTS_PER_RUN, "field checklist")
+        make_checklist(a, use_model=use_model)
+        analysis.save(a)
+        return a.summary()
+
+
+def _download(data, media_type: str, name: str) -> Response:
+    return Response(data, media_type=media_type, headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+@app.get("/api/analyze/{run_id}/field.geojson")
+def field_geojson(run_id: str):
+    from app.fieldlist import geojson
+    a = _done(run_id)
+    return _download(json.dumps(geojson(a), ensure_ascii=False), "application/geo+json",
+                     f"field-checklist-{a.id}.geojson")
+
+
+@app.get("/api/analyze/{run_id}/field.kml")
+def field_kml(run_id: str):
+    from app.fieldlist import kml
+    a = _done(run_id)
+    return _download(kml(a), "application/vnd.google-earth.kml+xml", f"field-checklist-{a.id}.kml")
+
+
+@app.get("/api/analyze/{run_id}/field/map.png")
+def field_map(run_id: str):
+    from app.fieldlist import overview_png
+    return Response(overview_png(_done(run_id)), media_type="image/png")
+
+
+@app.get("/field/{run_id}", response_class=HTMLResponse)
+def field_page(run_id: str):
+    from app.fieldlist import page
+    return page(_done(run_id))
 
 
 @app.get("/api/analyze/{run_id}/fires")

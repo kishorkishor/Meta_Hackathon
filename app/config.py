@@ -34,6 +34,7 @@ MAX_REPORTS_PER_RUN = 3       # Muse Spark reports per analysis (each is several
 MAX_QUESTIONS_PER_RUN = 30
 MAX_LOOKS_PER_RUN = 3         # "look at every big patch" runs per analysis (checks are cached per patch)
 MAX_WITNESS_PER_RUN = 2      # SAM second witness runs per analysis (each is up to 8 SAM calls)
+MAX_FIELDLISTS_PER_RUN = 3    # field checklists written by Muse Spark per analysis (the plain one is free)
 MAX_SCENE_CLOUD = 70          # STAC pre-filter on whole-scene cloud cover
 CANDIDATES = 8                # scenes per window whose cloud mask we look at
 MAX_SCENES = 3                # clearest scenes used in the per-pixel median

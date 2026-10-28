@@ -216,6 +216,7 @@ function clearOverlays() {
   state.overlays = {};
   if (state.regionsLayer) map.removeLayer(state.regionsLayer);
   if (state.missedLayer) map.removeLayer(state.missedLayer);
+  if (state.stopsLayer) map.removeLayer(state.stopsLayer);
 }
 
 function show(a) {
@@ -259,6 +260,7 @@ function show(a) {
   renderReport(a);
   renderLook(a);
   renderWitness(a);
+  renderField(a);
   renderRegions(a);
   $("#results").hidden = false;
   const used = (s) => (s || []).map((x) => x.date).sort();
@@ -415,6 +417,56 @@ $("#witness").addEventListener("click", async () => {
     if (current()) { state.view = "agreement"; show(j); }
   } catch (e) {
     if (current()) { $("#witness-summary").textContent = e.message; $("#witness").disabled = false; }
+  }
+});
+
+// ---------- field checklist ----------
+function renderField(a) {
+  const fl = a.checklist || {};
+  const meta = state.health.meta;
+  $("#field").textContent = meta ? (fl.stops ? "Have Muse Spark make it again" : "Have Muse Spark make a field checklist")
+    : "Make a field checklist (plain version)";
+  $("#field").disabled = false;
+  const list = $("#stops");
+  list.innerHTML = "";
+  if (state.stopsLayer) map.removeLayer(state.stopsLayer);
+  $("#field-links").hidden = !fl.stops;
+  if (!fl.stops) { $("#field-summary").textContent = ""; return; }
+  $("#field-print").href = `/field/${a.id}`;
+  $("#field-kml").href = `/api/analyze/${a.id}/field.kml`;
+  $("#field-geojson").href = `/api/analyze/${a.id}/field.geojson`;
+  $("#field-summary").textContent = [fl.intro, fl.note,
+    fl.source === "muse-spark" ? "" : "Plain version, written without Muse Spark.",
+    a.checklist_stale ? "New checks came in after this list was made; make it again to use them." : ""]
+    .filter(Boolean).join(" ");
+  if (!fl.stops.length) list.append(el("li", "No changed patch of 1 ha or more, so there is nothing to visit.", "muted"));
+  state.stopsLayer = L.layerGroup().addTo(map);
+  for (const s of fl.stops) {
+    const [lon, lat] = s.point;
+    L.marker([lat, lon], { icon: L.divIcon({ className: "stop-pin", html: String(s.rank), iconSize: [24, 24] }) })
+      .bindTooltip(`${s.rank}. ${s.kind}, ${s.area_ha} ha`).addTo(state.stopsLayer);
+    const li = el("li");
+    li.append(el("b", `${s.rank}. `), `${s.kind}, ${s.area_ha} ha`,
+              el("div", `${lat.toFixed(5)}, ${lon.toFixed(5)}` +
+                 (s.km_from_previous != null ? ` · ${s.km_from_previous} km from stop ${s.rank - 1}` : ""), "meta"),
+              el("div", `Look for: ${s.look_for}`, "meta"), el("div", `Why: ${s.why}`, "meta"));
+    li.addEventListener("click", () => map.setView([lat, lon], 15));
+    list.append(li);
+  }
+}
+
+$("#field").addEventListener("click", async () => {
+  const run = state.run, gen = state.gen;
+  if (!run) return;
+  const current = () => gen === state.gen && state.run && state.run.id === run.id;
+  $("#field").disabled = true;
+  $("#field-summary").textContent = state.health.meta
+    ? "Muse Spark is choosing the stops and writing what to look for…" : "Making the list…";
+  try {
+    const j = await api(`/api/analyze/${run.id}/field`, { method: "POST" });
+    if (current()) show(j);
+  } catch (e) {
+    if (current()) { $("#field-summary").textContent = e.message; $("#field").disabled = false; }
   }
 });
 

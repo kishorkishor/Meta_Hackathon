@@ -52,6 +52,8 @@ class Analysis:
     witnesses_made: int = 0
     visual: dict = field(default_factory=dict)        # summary of the Muse Spark look at every big patch
     looks_made: int = 0
+    checklist: dict = field(default_factory=dict)     # the field checklist (where to go first)
+    fieldlists_made: int = 0
     report: str = ""
     report_source: str = ""
     chat: list = field(default_factory=list)
@@ -61,6 +63,10 @@ class Analysis:
     @property
     def dir(self):
         return C.CACHE / "runs" / self.id
+
+    def evidence_mark(self) -> list:
+        """Changes when new checks arrive, so a field checklist made before them shows as out of date."""
+        return [len(self.checks), self.witnesses_made]
 
     def summary(self) -> dict:
         """Everything the page and the analyst need, without pixel arrays."""
@@ -82,6 +88,8 @@ class Analysis:
             out["checks"] = self.checks
             out["witness"] = self.witness
             out["visual"] = self.visual
+            out["checklist"] = self.checklist
+            out["checklist_stale"] = bool(self.checklist) and self.checklist.get("based_on") != self.evidence_mark()
             out["report"] = self.report
             out["report_source"] = self.report_source
         return out

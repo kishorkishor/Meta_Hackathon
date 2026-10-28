@@ -104,6 +104,18 @@ are cached per patch, a failed look is retried next time. Disagreements get a da
 unclear ones a dotted grey edge, and both are listed with what was seen. Nothing is removed: the rules' patch,
 its confidence and the visual verdict are all shown.
 
+**Field checklist** (built during the hackathon). Candidates are every patch of 1 ha or more and every place of
+1 ha or more that only SAM saw. They are put in a first order by area, where a place counts double if Muse
+Spark disagrees or could not tell, if SAM does not see it, or if only SAM saw it, because only a visit settles
+those. The 25 first go to Muse Spark with their facts (kind, area, confidence, main doubt, both checks, what
+Muse Spark saw). It chooses up to 10 stops, may reorder them, and writes what to look for and why (structured
+output; the stop id must be one of the candidates). Unknown or repeated ids are dropped; empty text gets the
+template text. If it names no real candidate, or the call fails, the plain version is used and the page says so.
+Each stop's point is the pixel of its patch farthest from the edge, so it is always inside the patch even when the
+patch is C shaped. Distances are straight lines between stops. The plain version is free and is redone on its
+own when new checks arrive; a written one is kept and marked out of date. Exports: a printable page (overview
+map, one block per stop with before and after pictures and a tick box form), KML and GeoJSON.
+
 **Ask in plain words** (built during the hackathon). Muse Spark on the Responses API, with web search grounding
 and three tools (OpenStreetMap place search, a Sentinel-2 scene count with whole tile cloud cover, submit plan),
 turns a question into an area, two dates and a reason. The plan must pass the same limits as the map form;
@@ -114,7 +126,8 @@ patches, or every big patch as above), SAM outlines, the SAM second witness and 
 Without a Meta key the app still works and writes a plain automatic summary from the same facts.
 
 **Limits.** Two analyses download at once and up to eight wait in line; each analysis allows 3 Muse Spark
-reports, 3 SAM refinements, 3 visual check runs, 2 second witness runs and 30 questions, one at a time.
+reports, 3 SAM refinements, 3 visual check runs, 2 second witness runs, 3 field checklists and 30 questions,
+one at a time.
 
 ## 7. What it cannot do
 
