@@ -1,11 +1,9 @@
-"""Meta model steps on top of the index detector.
+"""SAM 3.1 outlines on top of the index detector.
 
-SAM 3.1 outlines: each large region's box is sent to SAM 3.1 on the after image. SAM's mask is kept only
-inside the detector's region grown by 3 pixels and only where the ground was clear in both periods, so SAM
-can sharpen an edge but cannot invent change where the satellite saw none. Raw areas are kept for comparison.
-
-Muse Spark visual check: before and after crops with the region outlined are shown to Muse Spark, which says
-whether what it sees agrees with the detector's label. This is a second opinion, not ground truth.
+Each large region's box is sent to SAM 3.1 on the after image. SAM's mask is kept only inside the detector's
+region grown by 3 pixels and only where the ground was clear in both periods, so SAM can sharpen an edge but
+cannot invent change where the satellite saw none. Raw areas are kept for comparison.
+(The Muse Spark visual check lives in visual.py.)
 """
 from __future__ import annotations
 
@@ -14,7 +12,7 @@ from PIL import Image
 from scipy import ndimage
 
 from app import imagery, meta_client
-from app.analysis import Analysis, change_rgba, outline_crop, region_mask, _png
+from app.analysis import Analysis, change_rgba, region_mask, _png
 from app.detect import LIKELY
 
 GROW = 3
@@ -81,28 +79,3 @@ def refine_with_sam(a: Analysis, max_regions: int = 16) -> dict:
     a.layers["refined"] = _png(change_rgba(a.det, classes, confidence))
     return a.refined
 
-
-CHECK_PROMPT = (
-    "You are checking a satellite change detector. The two images are Sentinel-2 true-colour crops of the same "
-    "place, about 20 m per pixel, before and after. The yellow line marks an area the detector labelled "
-    "'{kind}'. Look at both images and answer only with JSON: "
-    '{{"verdict": "agrees" | "disagrees" | "unclear", "what_you_see": "<one short sentence>", '
-    '"reason": "<one short sentence>"}}. Say "unclear" if clouds, haze, shadow or the pixel size make it '
-    "impossible to tell. Do not guess.")
-
-
-def check_regions(a: Analysis, ids: list[int] | None = None, max_n: int = 6) -> dict:
-    ids = ids or [f["properties"]["id"] for f in a.regions[:max_n]]
-    by_id = {f["properties"]["id"]: f for f in a.regions}
-    out = {}
-    for rid in [i for i in ids if i in by_id][:max_n]:
-        if rid in a.checks:
-            out[rid] = a.checks[rid]
-            continue
-        kind = by_id[rid]["properties"]["kind"]
-        ans = meta_client.look(CHECK_PROMPT.format(kind=kind),
-                               [("Before:", outline_crop(a, rid, "before")), ("After:", outline_crop(a, rid, "after"))])
-        verdict = str(ans.get("verdict", "unclear")).lower()
-        ans["verdict"] = verdict if verdict in ("agrees", "disagrees", "unclear") else "unclear"
-        a.checks[rid] = out[rid] = ans
-    return out

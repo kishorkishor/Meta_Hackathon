@@ -50,6 +50,8 @@ class Analysis:
     checks: dict = field(default_factory=dict)        # Muse Spark visual checks per region id
     witness: dict = field(default_factory=dict)       # SAM 3.1 second witness (concept prompts) summary
     witnesses_made: int = 0
+    visual: dict = field(default_factory=dict)        # summary of the Muse Spark look at every big patch
+    looks_made: int = 0
     report: str = ""
     report_source: str = ""
     chat: list = field(default_factory=list)
@@ -79,6 +81,7 @@ class Analysis:
             out["refined"] = {k: v for k, v in self.refined.items() if k != "masks"}
             out["checks"] = self.checks
             out["witness"] = self.witness
+            out["visual"] = self.visual
             out["report"] = self.report
             out["report_source"] = self.report_source
         return out

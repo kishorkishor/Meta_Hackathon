@@ -43,7 +43,10 @@ slightly shifted image make the answer a guess. A wrong "this village looks fine
    buildings in the before and after images on its own, with no hint from the rules. The SAM vs rules layer
    shows where both see the same change, where only the rules do, and where only SAM does; each patch says
    whether SAM agrees, and large areas only SAM saw are listed to check by eye.
-5. **Muse Spark** acts as the analyst. With tools it reads the facts, looks at before and after crops of the
+5. **Muse Spark looks at every big patch** (built during the hackathon): before and after pictures of each
+   patch of 2 ha or more, 20 at a time, and says in a fixed JSON shape whether the label looks right, what it
+   looks like instead, and why. Doubted patches get a dashed edge on the map and are listed.
+6. **Muse Spark** acts as the analyst. With tools it reads the facts, looks at before and after crops of the
    largest patches and says whether each label looks right, asks SAM for outlines, checks NASA FIRMS fires,
    and then writes a plain report: what changed, how sure, what could not be checked, where to look first.
    You can then ask it follow up questions about the area.
@@ -71,6 +74,7 @@ Tests (offline, synthetic scenes and recorded API shapes): `.venv/Scripts/python
 | `app/regions.py` | patches, areas, polygons |
 | `app/meta_client.py` | Muse Spark chat and vision, SAM 3.1 over the Responses API |
 | `app/refine.py`, `app/agent.py` | SAM outlines, visual checks, the tool calling analyst |
+| `app/visual.py` | Muse Spark's visual check of every big patch (structured output) |
 | `app/witness.py` | SAM 3.1 concept prompts as a second witness, the agreement layer |
 | `app/planner.py` | question in plain words to place, dates and reasons (web search, OpenStreetMap, image check) |
 | `app/api.py`, `frontend/` | HTTP API and the map page |

@@ -94,18 +94,27 @@ it SAM also marks: agrees (at least half), partly (at least a fifth) or does not
 1 ha or more, are listed as places to check by eye. The rules' own confidence is not changed: SAM on 20 m
 pixels is a second opinion, and both views stay visible side by side.
 
+**Muse Spark looks at every big patch** (built during the hackathon). Every patch of 2 ha or more, 20 per run,
+largest first, goes to Muse Spark as two true colour crops (before and after, contrast stretched, edge drawn
+in yellow) with the label the rules gave and its area. It is not told how sure the rules were. It answers in a
+fixed JSON shape (structured output): verdict (agrees, disagrees or unclear), its own label (one of the five
+change types, no real change, cloud haze or shadow, seasonal change in crops or grass, something else), what
+it sees and why. Any value outside those lists becomes "unclear". Four patches are looked at a time; answers
+are cached per patch, a failed look is retried next time. Disagreements get a dashed red edge on the map,
+unclear ones a dotted grey edge, and both are listed with what was seen. Nothing is removed: the rules' patch,
+its confidence and the visual verdict are all shown.
+
 **Ask in plain words** (built during the hackathon). Muse Spark on the Responses API, with web search grounding
 and three tools (OpenStreetMap place search, a Sentinel-2 scene count with whole tile cloud cover, submit plan),
 turns a question into an area, two dates and a reason. The plan must pass the same limits as the map form;
 a plan that fails goes back with the reason. At most 10 turns per plan and 40 plans an hour per server.
 
-**Muse Spark** works as the analyst through tool calls: facts, region details, a visual check of up to six
-patches (before and after crops with the outline drawn in, answered as JSON: agrees, disagrees or unclear),
-SAM outlines, the SAM second witness and NASA FIRMS fires. It may only use numbers its tools returned. The loop stops after 8 steps.
+**Muse Spark** works as the analyst through tool calls: facts, region details, the visual check (chosen
+patches, or every big patch as above), SAM outlines, the SAM second witness and NASA FIRMS fires. It may only use numbers its tools returned. The loop stops after 8 steps.
 Without a Meta key the app still works and writes a plain automatic summary from the same facts.
 
 **Limits.** Two analyses download at once and up to eight wait in line; each analysis allows 3 Muse Spark
-reports, 3 SAM refinements, 2 second witness runs and 30 questions, one at a time.
+reports, 3 SAM refinements, 3 visual check runs, 2 second witness runs and 30 questions, one at a time.
 
 ## 7. What it cannot do
 

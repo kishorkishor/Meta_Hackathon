@@ -10,7 +10,8 @@ import json
 from app import config as C
 from app import firms, meta_client
 from app.analysis import Analysis
-from app.refine import check_regions, refine_with_sam
+from app.refine import refine_with_sam
+from app.visual import check_every_big_patch, check_regions
 from app.report import facts
 from app.witness import second_witness
 
@@ -36,6 +37,13 @@ TOOLS = [
         "description": "Look at before and after images of up to 6 regions and say if each label looks right.",
         "parameters": {"type": "object", "properties": {
             "ids": {"type": "array", "items": {"type": "integer"}, "maxItems": 6}}, "required": ["ids"]}}},
+    {"type": "function", "function": {
+        "name": "check_every_big_patch",
+        "description": "Look at before and after images of patches of 2 ha or more, the next 20 not yet looked "
+                       "at, largest first, and say if each label looks right. Returns counts and hectares per "
+                       "verdict for all patches looked at so far, how many remain, and every patch that was not "
+                       "confirmed with what was seen there.",
+        "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {
         "name": "refine_outlines",
         "description": "Sharpen the outlines of the largest regions with SAM 3.1 and report how areas changed.",
@@ -63,6 +71,11 @@ def _run_tool(a: Analysis, name: str, args: dict):
         return {**f["properties"], "visual_check": a.checks.get(f["properties"]["id"])}
     if name == "check_regions_visually":
         return {str(k): v for k, v in check_regions(a, [int(i) for i in args.get("ids", [])]).items()}
+    if name == "check_every_big_patch":
+        if a.looks_made >= C.MAX_LOOKS_PER_RUN:   # shares the page's limit: each run can be 20 vision calls
+            return {**a.visual, "note": "visual check limit for this analysis reached; these are the results so far"}
+        a.looks_made += 1
+        return check_every_big_patch(a)
     if name == "refine_outlines":
         return a.refined or refine_with_sam(a)
     if name == "second_witness":
@@ -97,9 +110,9 @@ def _loop(a: Analysis, messages: list) -> str:
 
 
 REPORT_TASK = (
-    "Write the change report for this area. First get the facts. Then check the largest regions visually "
-    "(up to 6), sharpen their outlines, and ask SAM for a second witness. Then write: a one sentence headline; "
-    "what changed, with hectares and how sure, including where SAM agrees or not; what could not be checked "
+    "Write the change report for this area. First get the facts. Then check every big patch visually, "
+    "sharpen the outlines, and ask SAM for a second witness. Then write: a one sentence headline; what "
+    "changed, with hectares and how sure, including where the visual check or SAM disagree; what could not be checked "
     "and why; and the two or three places to look at first on the ground, with coordinates. Keep it under "
     "200 words.")
 

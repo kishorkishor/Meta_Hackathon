@@ -8,6 +8,7 @@
     POST /api/analyze/{id}/report     Muse Spark writes the report (checks and SAM outlines on the way)
     POST /api/analyze/{id}/ask        a follow-up question
     POST /api/analyze/{id}/refine     SAM 3.1 outlines only
+    POST /api/analyze/{id}/check      Muse Spark looks at every big patch and agrees, disagrees or is unsure
     POST /api/analyze/{id}/witness    SAM 3.1 concept prompts as a second witness, with an agreement layer
     GET  /api/demos                   prepared places
     GET  /api/health
@@ -215,6 +216,21 @@ def refine(run_id: str):
             refine_with_sam(a)
         except Exception as e:
             raise HTTPException(502, f"SAM call failed: {type(e).__name__}: {e}")
+        analysis.save(a)
+        return a.summary()
+
+
+@app.post("/api/analyze/{run_id}/check")
+def check(run_id: str):
+    a = _done(run_id)
+    _need_meta()
+    from app.visual import check_every_big_patch
+    with _hold(a):
+        _spend(a, "looks_made", C.MAX_LOOKS_PER_RUN, "visual check")
+        try:
+            check_every_big_patch(a)
+        except Exception as e:
+            raise HTTPException(502, f"Muse Spark call failed: {type(e).__name__}: {e}")
         analysis.save(a)
         return a.summary()
 

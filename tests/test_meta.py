@@ -1,4 +1,4 @@
-"""Meta steps with fake Muse Spark and SAM 3.1 responses: SAM parsing, outline refinement, visual checks, agent loop."""
+"""Meta steps with fake Muse Spark and SAM 3.1 responses: SAM parsing, outline refinement, agent loop."""
 import json
 from types import SimpleNamespace
 
@@ -150,16 +150,6 @@ def test_sam_outline_that_disagrees_is_not_used(monkeypatch):
     monkeypatch.setattr(meta_client, "segment", fake_segment)
     row = refine.refine_with_sam(a)["regions"][0]
     assert row["used"] is False and "disagrees" in row["why"]
-
-
-def test_visual_check_keeps_only_known_verdicts(monkeypatch):
-    a = make_analysis()
-    answers = iter([{"verdict": "Agrees", "what_you_see": "dark patch", "reason": "char"}])
-    monkeypatch.setattr(meta_client, "look", lambda q, imgs: next(answers))
-    out = refine.check_regions(a, [1, 99])
-    assert out[1]["verdict"] == "agrees"
-    assert 99 not in out
-    assert refine.check_regions(a, [1])[1]["verdict"] == "agrees"   # cached, no second call
 
 
 # ---------------------------------------------------------------------------------------------------

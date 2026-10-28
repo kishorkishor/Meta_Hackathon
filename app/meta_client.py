@@ -37,12 +37,17 @@ def png_data_url(rgb: np.ndarray) -> str:
 # Muse Spark
 # ---------------------------------------------------------------------------------------------------
 
-def chat(messages: list, tools: list | None = None, json_mode: bool = False):
-    """One Chat Completions call. Returns the assistant message object."""
+def chat(messages: list, tools: list | None = None, json_mode: bool = False, schema: dict | None = None):
+    """One Chat Completions call. Returns the assistant message object.
+
+    `schema` asks for structured output that follows that JSON schema; `json_mode` only asks for some JSON.
+    """
     kw = {"model": C.META_CHAT_MODEL, "messages": messages}
     if tools:
         kw["tools"] = tools
-    if json_mode:
+    if schema:
+        kw["response_format"] = {"type": "json_schema", "json_schema": {"name": "answer", "schema": schema}}
+    elif json_mode:
         kw["response_format"] = {"type": "json_object"}
     return _client().chat.completions.create(**kw).choices[0].message
 
@@ -63,13 +68,13 @@ def respond(input, tools: list | None = None, instructions: str | None = None,
     return _client().responses.create(**kw)
 
 
-def look(question: str, images: list[tuple[str, np.ndarray]]) -> dict:
-    """Ask Muse Spark about labelled images. Expects a JSON answer; returns {} if it can't parse one."""
+def look(question: str, images: list[tuple[str, np.ndarray]], schema: dict | None = None) -> dict:
+    """Ask Muse Spark about labelled images. Expects a JSON answer; returns {"raw": text} if it can't parse one."""
     content = [{"type": "text", "text": question}]
     for label, rgb in images:
         content.append({"type": "text", "text": label})
         content.append({"type": "image_url", "image_url": {"url": png_data_url(rgb)}})
-    msg = chat([{"role": "user", "content": content}], json_mode=True)
+    msg = chat([{"role": "user", "content": content}], json_mode=True, schema=schema)
     try:
         return json.loads(msg.content or "{}")
     except json.JSONDecodeError:

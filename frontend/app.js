@@ -244,7 +244,7 @@ function show(a) {
     toggle(name, box.checked);
   }
   state.regionsLayer = L.geoJSON(a.regions, {
-    style: (f) => ({ color: COLOURS[f.properties.kind], weight: 1.5, fill: false }),
+    style: (f) => edgeStyle(f, a),
     onEachFeature: (f, layer) => layer.on("click", () => openRegion(f)),
   }).addTo(map);
   map.fitBounds(bounds, { padding: [20, 20] });
@@ -253,8 +253,11 @@ function show(a) {
     .map(([k, c]) => `<span style="--c:${c}">${k}</span>`).join("") +
     `<span style="--c:rgba(120,120,120,.7)">not seen</span>` +
     (a.layers.includes("agreement") ? `<span class="sub">SAM vs rules layer</span>` +
-      Object.entries(AGREEMENT).map(([k, c]) => `<span style="--c:${c}">${k}</span>`).join("") : "");
+      Object.entries(AGREEMENT).map(([k, c]) => `<span style="--c:${c}">${k}</span>`).join("") : "") +
+    (a.visual && a.visual.checked ? `<span class="sub">Patch edges: dashed red = Muse Spark disagrees, ` +
+      `dotted grey = unclear</span>` : "");
   renderReport(a);
+  renderLook(a);
   renderWitness(a);
   renderRegions(a);
   $("#results").hidden = false;
@@ -300,7 +303,8 @@ function renderRegions(a) {
       `<span class="conf-${p.confidence}">${p.confidence}</span>` +
       `<div class="meta">${p.center[1].toFixed(4)}, ${p.center[0].toFixed(4)}` +
       (p.main_doubt ? ` · doubt: ${p.main_doubt}` : "") +
-      (check ? ` · visual check: ${check.verdict}` : "") +
+      (check ? ` · Muse Spark: <span class="verdict-${check.verdict}">${check.verdict}</span>` +
+        (check.verdict !== "agrees" && check.looks_like ? ` (looks like ${check.looks_like})` : "") : "") +
       (p.sam_witness ? ` · SAM: ${p.sam_witness.verdict} (${Math.round(p.sam_witness.share * 100)}%)` : "") + "</div>";
     li.addEventListener("click", () => openRegion(f));
     list.append(li);
@@ -311,8 +315,60 @@ function openRegion(f) {
   const p = f.properties;
   map.fitBounds(L.geoJSON(f).getBounds(), { padding: [80, 80], maxZoom: 15 });
   $("#crop img").src = `/api/analyze/${state.run.id}/crop/${p.id}`;
+  const c = state.run.checks && state.run.checks[p.id];
+  $("#crop-note").hidden = !c;
+  $("#crop-note").textContent = c ? `Muse Spark ${c.verdict}: ${c.what_you_see} ${c.reason}`.trim() : "";
   $("#crop").hidden = false;
 }
+
+// patch edges: the change colour, dashed red where Muse Spark disagrees, dotted grey where it could not tell
+function edgeStyle(f, a) {
+  const c = a.checks && a.checks[f.properties.id];
+  if (c && c.verdict === "disagrees") return { color: "#e0574f", weight: 2.5, dashArray: "6 4", fill: false };
+  if (c && c.verdict === "unclear") return { color: "#c7ccd4", weight: 2, dashArray: "2 4", fill: false };
+  return { color: COLOURS[f.properties.kind], weight: c ? 2 : 1.5, fill: false };
+}
+
+// ---------- Muse Spark visual check of every big patch ----------
+function renderLook(a) {
+  const v = a.visual || {};
+  const meta = state.health.meta;
+  $("#look").disabled = !meta;
+  $("#look").title = meta ? "" : "Set MODEL_API_KEY to use Muse Spark";
+  $("#look").textContent = !v.checked ? "Have Muse Spark look at every big patch"
+    : v.remaining > 0 ? `Look at the next ${Math.min(20, v.remaining)} patches` : "All big patches looked at";
+  if (v.checked && !v.remaining) $("#look").disabled = true;
+  const list = $("#flagged");
+  list.innerHTML = "";
+  if (!v.checked) { $("#look-summary").textContent = ""; return; }
+  const n = v.counts, ha = (x) => Number(x).toLocaleString("en-US", { maximumFractionDigits: 1 });
+  $("#look-summary").textContent =
+    `Looked at ${v.checked} of ${v.eligible} patches of 2 ha or more: ${n.agrees} agree (${ha(v.ha.agrees)} ha), ` +
+    `${n.disagrees} disagree (${ha(v.ha.disagrees)} ha), ${n.unclear} unclear (${ha(v.ha.unclear)} ha).`;
+  const byId = Object.fromEntries(a.regions.features.map((f) => [f.properties.id, f]));
+  for (const x of v.flagged || []) {
+    const li = el("li");
+    li.append(el("b", `#${x.id} `), `${x.kind}, ${x.area_ha} ha · `, el("span", x.verdict, `verdict-${x.verdict}`),
+              x.looks_like ? `, looks like ${x.looks_like}` : "",
+              el("div", [x.what_you_see, x.reason].filter(Boolean).join(" "), "meta"));
+    li.addEventListener("click", () => byId[x.id] ? openRegion(byId[x.id]) : map.setView([x.center[1], x.center[0]], 15));
+    list.append(li);
+  }
+}
+
+$("#look").addEventListener("click", async () => {
+  const run = state.run, gen = state.gen;
+  if (!run || !state.health.meta) return;
+  const current = () => gen === state.gen && state.run && state.run.id === run.id;
+  $("#look").disabled = true;
+  $("#look-summary").textContent = "Muse Spark is looking at the before and after picture of each big patch…";
+  try {
+    const j = await api(`/api/analyze/${run.id}/check`, { method: "POST" });
+    if (current()) show(j);
+  } catch (e) {
+    if (current()) { $("#look-summary").textContent = e.message; $("#look").disabled = false; }
+  }
+});
 $("#crop-close").addEventListener("click", () => { $("#crop").hidden = true; });
 
 // ---------- SAM 3.1 second witness ----------

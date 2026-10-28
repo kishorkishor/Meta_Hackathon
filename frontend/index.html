@@ -63,6 +63,14 @@
       </form>
       <div id="answers"></div>
 
+      <h2>Visual check <span class="tag">Muse Spark</span></h2>
+      <p class="muted small">Muse Spark looks at the before and after picture of every patch of 2 ha or more,
+        20 at a time, largest first, and says whether the label looks right. Patches it doubts get a dashed
+        edge on the map.</p>
+      <button id="look" class="ghost wide">Have Muse Spark look at every big patch</button>
+      <p id="look-summary" class="small"></p>
+      <ol id="flagged" class="regions"></ol>
+
       <h2>Second witness <span class="tag">SAM 3.1</span></h2>
       <p class="muted small">SAM 3.1 looks for water, burn scars, trees and buildings in both images on its own,
         with no hint from the rules. Where both see the same change, trust it more.</p>
@@ -79,7 +87,7 @@
     </footer>
   </aside>
   <main id="map"></main>
-  <div id="crop" hidden><img alt="Before and after crop"><button class="ghost" id="crop-close">Close</button></div>
+  <div id="crop" hidden><img alt="Before and after crop"><p id="crop-note" class="small" hidden></p><button class="ghost" id="crop-close">Close</button></div>
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
         integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>

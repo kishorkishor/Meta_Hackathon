@@ -32,6 +32,7 @@ def facts(a, top: int = 15) -> dict:
         "largest_regions": regs,
         "sam_refinement": {k: v for k, v in a.refined.items() if k != "masks"} or None,
         "sam_second_witness": getattr(a, "witness", None) or None,
+        "visual_check_of_big_patches": getattr(a, "visual", None) or None,
         "notes": a.message or None,
     }
 
