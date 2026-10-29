@@ -19,7 +19,7 @@ from datetime import date, timedelta
 import numpy as np
 import requests
 
-from app import analysis, config as C, imagery, meta_client
+from app import analysis, config as C, imagery, languages, meta_client
 
 KINDS = ["burned land", "new water", "water gone", "vegetation loss", "new building or bare ground"]
 FIRST_DATE = date(2017, 1, 1)     # Sentinel-2 L2A covers the whole world from about here
@@ -258,10 +258,17 @@ def _run_tool(name: str, args: dict, steps: list):
     return {"error": f"unknown tool {name}"}, None
 
 
-def plan(question: str) -> dict:
+def plan(question: str, language: str = "en") -> dict:
     """Question in, plan out: {"ok": True, place, bbox, before, after, window_days, looking_for, why, sources,
-    steps} or {"ok": False, reason, sources, steps}. Raises PlanError if no plan comes out in time."""
+    steps} or {"ok": False, reason, sources, steps}. Raises PlanError if no plan comes out in time.
+
+    The question may be in any language. With a language other than English, `why` and the give up reason come
+    back in it; place lookups still use names OpenStreetMap knows."""
     instructions = SYSTEM.format(today=date.today().isoformat())
+    if languages.get(language)["code"] != "en":
+        instructions += ("\n\nThe reader's language is {name}. Write why and the give_up reason in {name} "
+                         "({native}). Search places with the name OpenStreetMap uses, in Latin letters when the place "
+                         "has one, and keep looking_for values exactly as listed.").format(**languages.get(language))
     tools = TOOLS + ([{"type": "web_search", "search_context_size": "low"}] if C.WEB_SEARCH else [])
     sources, steps = {}, []
     try:
@@ -286,7 +293,8 @@ def plan(question: str) -> dict:
                 except Exception as e:   # a failed lookup is information for the model, not a crash
                     result, final = {"error": f"{type(e).__name__}: {e}"}, None
                 if final is not None:
-                    return {**final, "question": question, "steps": steps,
+                    return {**final, "question": question, "language": languages.get(language)["code"],
+                            "steps": steps,
                             "sources": [{"url": u, "title": t} for u, t in sources.items()]}
                 new_input.append({"type": "function_call_output", "call_id": _get(c, "call_id"),
                                   "output": json.dumps(result, default=str)})

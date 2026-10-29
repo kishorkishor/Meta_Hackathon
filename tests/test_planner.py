@@ -200,7 +200,7 @@ def test_plan_endpoint_returns_a_plan_and_the_run_carries_the_question(client, m
     plan = {"ok": True, "place": "Dadu", "bbox": DADU, "before": "2022-06-20", "after": "2022-09-05",
             "window_days": 15, "looking_for": ["new water"], "why": "Peak in late August.", "sources": [],
             "steps": [], "question": "floods near Dadu?"}
-    monkeypatch.setattr(planner, "plan", lambda q: plan)
+    monkeypatch.setattr(planner, "plan", lambda q, language="en": plan)
     started = {}
 
     def fake_start(bbox, before, after, window_days, question="", plan=None):
@@ -219,14 +219,14 @@ def test_plan_endpoint_returns_a_plan_and_the_run_carries_the_question(client, m
 
 def test_plan_endpoint_is_rate_limited(client, monkeypatch):
     monkeypatch.setattr(planner.C, "PLANS_PER_HOUR", 1)
-    monkeypatch.setattr(planner, "plan", lambda q: {"ok": False, "reason": "no", "steps": [], "sources": [],
+    monkeypatch.setattr(planner, "plan", lambda q, language="en": {"ok": False, "reason": "no", "steps": [], "sources": [],
                                                     "question": q})
     assert client.post("/api/plan", json={"question": "floods near Dadu"}).status_code == 200
     assert client.post("/api/plan", json={"question": "floods near Dadu"}).status_code == 429
 
 
 def test_plan_errors_are_reported_plainly(client, monkeypatch):
-    def stuck(q):
+    def stuck(q, language="en"):
         raise planner.PlanError("could not settle")
     monkeypatch.setattr(planner, "plan", stuck)
     r = client.post("/api/plan", json={"question": "somewhere"})

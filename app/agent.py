@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 
 from app import config as C
-from app import firms, meta_client
+from app import firms, languages, meta_client
 from app.analysis import Analysis
 from app.refine import refine_with_sam
 from app.visual import check_every_big_patch, check_regions
@@ -22,6 +22,12 @@ SYSTEM = (
     "checked (cloud, shadow, image shift) and how sure each finding is; when a visual check disagrees with "
     "the detector, say so. Write short plain sentences. Do not use dashes as punctuation. Coordinates are "
     "given as [longitude, latitude]; write them as latitude, longitude.")
+
+
+def system(language: str = "en") -> str:
+    """The analyst's rules, plus the reader's language when it is not English."""
+    extra = languages.instruction(language)
+    return f"{SYSTEM} {extra}" if extra else SYSTEM
 
 TOOLS = [
     {"type": "function", "function": {
@@ -126,21 +132,21 @@ def report_task(a: Analysis) -> str:
             "their question, and if the images cannot answer part of it, say which part and why.")
 
 
-def write_report(a: Analysis) -> str:
-    messages = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": report_task(a)}]
+def write_report(a: Analysis, language: str = "en") -> str:
+    messages = [{"role": "system", "content": system(language)}, {"role": "user", "content": report_task(a)}]
     text = _loop(a, messages)
     a.chat = messages[1:]
-    a.report, a.report_source = text, "muse-spark"
+    a.report, a.report_source, a.report_language = text, "muse-spark", languages.get(language)["code"]
     return text
 
 
-def ask(a: Analysis, question: str) -> str:
+def ask(a: Analysis, question: str, language: str = "en") -> str:
     history = a.chat[-12:] if a.chat else [{"role": "user", "content": "Context: report for this area."},
                                           {"role": "assistant", "content": a.report}]
     # keep the history self-contained: drop a leading tool reply whose call was trimmed away
     while history and history[0].get("role") == "tool":
         history = history[1:]
-    messages = [{"role": "system", "content": SYSTEM}, *history, {"role": "user", "content": question}]
+    messages = [{"role": "system", "content": system(language)}, *history, {"role": "user", "content": question}]
     answer = _loop(a, messages)
     a.chat = messages[1:]
     return answer

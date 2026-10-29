@@ -75,3 +75,16 @@ footer { margin-top: 26px; }
 .links a { color: var(--accent); }
 .stop-pin { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: #fff;
   color: #111; border: 2px solid #111; font: 700 12px/1 system-ui, sans-serif; box-sizing: border-box; }
+.lang-row label { margin: 0; white-space: nowrap; }
+.lang-row select { flex: 1; }
+.with-mic { position: relative; }
+.with-mic textarea { padding-right: 44px; }
+.with-mic .mic { position: absolute; right: 6px; top: 6px; }
+button.mic { display: inline-grid; place-items: center; width: 36px; height: 36px; padding: 0; border-radius: 50%;
+  background: var(--chip); color: var(--text); flex: none; }
+button.mic[hidden] { display: none; }
+button.mic.recording { background: var(--bad); border-color: var(--bad); color: #fff; animation: pulse 1.2s infinite; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 6px rgba(224, 87, 79, .25); } }
+@media (prefers-reduced-motion: reduce) { button.mic.recording { animation: none; } }
+.voice-note { margin: 6px 0 0; }
+.voice-note.bad { color: var(--bad); }

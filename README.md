@@ -3,7 +3,8 @@
 Pick any place on Earth and two dates. Get back a map of what changed and a short report you can read,
 from a system that tells you where it is not sure.
 
-Built for the Meta Global AI Developer Hackathon (Oct 26 to Nov 4, 2026) with **Muse Spark** and **SAM 3.1**.
+Built for the Meta Global AI Developer Hackathon (Oct 26 to Nov 4, 2026) with **Muse Spark**, **SAM 3.1** and
+**Muse Voice Transcribe**.
 
 ## Before and during the hackathon
 
@@ -55,6 +56,12 @@ slightly shifted image make the answer a guess. A wrong "this village looks fine
    largest patches and says whether each label looks right, asks SAM for outlines, checks NASA FIRMS fires,
    and then writes a plain report: what changed, how sure, what could not be checked, where to look first.
    You can then ask it follow up questions about the area.
+8. **Your language** (built during the hackathon). Pick a language (Bangla, Hindi, Urdu, Tamil, Marathi, Arabic,
+   Spanish, Portuguese, French, Greek, Turkish, Indonesian, Vietnamese, Swahili or English) and Muse Spark writes
+   the report, the answers, the plan and the field checklist in it, with numbers, patch ids and coordinates kept
+   as they are on the map. The printable checklist comes out in that language too, right to left for Urdu and
+   Arabic. **Voice questions:** press the microphone, speak, and Muse Voice Transcribe turns it into text in the
+   question box, where you check it before asking.
 
 ## Run it
 
@@ -82,6 +89,7 @@ Tests (offline, synthetic scenes and recorded API shapes): `.venv/Scripts/python
 | `app/visual.py` | Muse Spark's visual check of every big patch (structured output) |
 | `app/witness.py` | SAM 3.1 concept prompts as a second witness, the agreement layer |
 | `app/fieldlist.py` | field checklist: stop choice, Muse Spark notes, printable page, KML and GeoJSON |
+| `app/languages.py`, `app/voice.py` | the languages offered; voice questions through Muse Voice Transcribe |
 | `app/planner.py` | question in plain words to place, dates and reasons (web search, OpenStreetMap, image check) |
 | `app/api.py`, `frontend/` | HTTP API and the map page |
 | `docs/METHOD.md` | every rule and threshold, and what the app cannot do |

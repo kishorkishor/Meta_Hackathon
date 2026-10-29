@@ -9,6 +9,9 @@ a key, or if the call fails, the same list is written from plain templates.
 Each stop gets a point inside its patch (the pixel farthest from the edge, so the point never falls in the gap
 of a C shaped patch), its size, the straight line distance from the previous stop and links for phones. The
 list goes out as JSON for the page, a printable page with a tick box form per stop, KML and GeoJSON.
+
+In another language Muse Spark writes the stops in it and, in the same answer, translates the fixed words of the
+printable page (LABELS), so a field worker gets one sheet in one language. A label it leaves out stays English.
 """
 from __future__ import annotations
 
@@ -23,7 +26,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from scipy import ndimage
 
-from app import meta_client
+from app import languages, meta_client
 from app.analysis import Analysis, stretch
 from app.imagery import true_colour
 
@@ -46,6 +49,30 @@ LOOK_FOR = {
 SAFETY = ("Check that the way is safe before you go. Do not walk into flood water, burning or smoking ground, "
           "or unstable slopes.")
 CONFIDENCE_WORDS = {"sure": "high confidence", "likely": "likely", "unsure": "low confidence"}
+KINDS = list(LOOK_FOR)
+
+# Every fixed word of the exports, in English. Muse Spark translates them for another language.
+LABELS = {
+    "title": "Field checklist", "place": "Place", "dates": "Satellite images, before and after",
+    "area": "Area, south west to north east", "made": "Made", "written_by": "Written by",
+    "question": "Question", "print": "Print", "kml": "KML for phones", "safety_title": "Safety",
+    "safety": SAFETY,
+    "overview_caption": "After image. Numbers are the stops, yellow lines their outlines, grey had no clear image "
+                        "in both periods.",
+    "lat_lon": "latitude, longitude", "size": "Size, about", "distance": "Straight line from the previous stop",
+    "look_for": "Look for", "why": "Why", "checks": "Checks",
+    "no_picture": "No picture: only SAM 3.1 marked this place.", "found": "What you found",
+    "as_on_map": "as on the map", "something_else": "something else", "could_not_reach": "could not reach",
+    "nothing": "No changed patch of 1 ha or more was found, so there is nothing to visit.",
+    "footer": "From Sentinel-2 at about 20 m per pixel: a single house is smaller than one pixel, and an edge can "
+              "be off by a pixel. Order is by importance, not by road.",
+    "rules": "satellite rules", "not_marked": "not marked", "saw_it": "saw it",
+    "conf_sure": "high confidence", "conf_likely": "likely", "conf_unsure": "low confidence",
+    "v_agrees": "agrees", "v_disagrees": "disagrees", "v_unclear": "unclear", "v_partly": "partly",
+    "v_does_not_see_it": "does not see it",
+    "stops_folder": "Stops, most important first", "outlines_folder": "Patch outlines",
+    **{"kind_" + k.replace(" ", "_"): k for k in KINDS},
+}
 
 PROMPT = (
     "You are planning a field visit for a team that will check satellite change on the ground. {context}"
@@ -56,7 +83,10 @@ PROMPT = (
     "look_for: what a person standing there should look for, in plain words a field worker understands "
     "(physical signs, never index names), and why: one sentence on why it is on the list, using only the facts "
     "given. Also write intro: two short sentences for the team about this trip. Do not add numbers that are not "
-    "in the facts. Do not use dashes as punctuation.\n\nCandidates: {facts}")
+    "in the facts. Do not use dashes as punctuation.{language}\n\nCandidates: {facts}")
+LABELS_TASK = (" Also fill labels: the fixed words of the printed page, translated into {name}. Translate each "
+               "English text below and keep its key; keep SAM 3.1, Muse Spark, Sentinel-2 and numbers as they are."
+               "\n\nLabels in English: {labels}")
 
 
 def _ha(x: float) -> str:
@@ -121,7 +151,7 @@ def _why(c: dict) -> str:
     return s + ". A visit tells how bad it is on the ground."
 
 
-def _ask_muse_spark(a: Analysis, cands: list[dict], n: int) -> dict:
+def _ask_muse_spark(a: Analysis, cands: list[dict], n: int, language: str = "en") -> dict:
     keys = ("ref", "kind", "area_ha", "confidence", "main_doubt", "visual_check", "muse_spark_saw",
             "sam_witness", "disputes", "source")
     facts = [{k: c[k] for k in keys if c[k] not in (None, [])} for c in cands]
@@ -142,7 +172,14 @@ def _ask_muse_spark(a: Analysis, cands: list[dict], n: int) -> dict:
         },
         "required": ["intro", "stops"],
     }
-    q = PROMPT.format(context=context, n=n, facts=json.dumps(facts, ensure_ascii=False))
+    extra = languages.instruction(language)
+    if extra:
+        extra = " " + extra + LABELS_TASK.format(name=languages.get(language)["name"],
+                                                 labels=json.dumps(LABELS, ensure_ascii=False))
+        schema["properties"]["labels"] = {"type": "object", "properties": {k: {"type": "string"} for k in LABELS},
+                                          "required": list(LABELS)}
+        schema["required"].append("labels")
+    q = PROMPT.format(context=context, n=n, facts=json.dumps(facts, ensure_ascii=False), language=extra)
     msg = meta_client.chat([{"role": "user", "content": q}], schema=schema)
     return json.loads(msg.content or "{}")
 
@@ -164,6 +201,12 @@ def _pick(cands: list[dict], ans: dict) -> list[dict]:
         if len(out) == MAX_STOPS:
             break
     return out
+
+
+def _labels(ans: dict) -> dict:
+    """Muse Spark's translated labels, each cleaned; a missing or empty one stays English."""
+    got = ans.get("labels") if isinstance(ans.get("labels"), dict) else {}
+    return {k: _text(got.get(k)) or v for k, v in LABELS.items()}
 
 
 def inside_point(a: Analysis, rid: int) -> list[float]:
@@ -212,27 +255,36 @@ def _finish(a: Analysis, picked: list[dict]) -> list[dict]:
     return stops
 
 
-def make_checklist(a: Analysis, use_model: bool = True) -> dict:
-    """Build the checklist; Muse Spark writes it when use_model is set, else (or if it fails) the templates do."""
+def make_checklist(a: Analysis, use_model: bool = True, language: str = "en") -> dict:
+    """Build the checklist; Muse Spark writes it when use_model is set, else (or if it fails) the templates do.
+
+    The templates are English, so a plain list asked for in another language says so in its note."""
+    lang = languages.get(language)
     cands = candidates(a)
     n = min(MAX_STOPS, len(cands))
-    source, intro, note, picked = "template", "", "", []
+    source, intro, note, picked, labels, written_in = "template", "", "", [], dict(LABELS), "en"
     if use_model and cands:
         try:
-            ans = _ask_muse_spark(a, cands, n)
+            ans = _ask_muse_spark(a, cands, n, lang["code"])
             picked = _pick(cands, ans)
             if picked:
-                source, intro = "muse-spark", _text(ans.get("intro"))
+                source, intro, written_in = "muse-spark", _text(ans.get("intro")), lang["code"]
+                if lang["code"] != "en":
+                    labels = _labels(ans)
             else:
                 note = "Muse Spark did not name any of the candidate places, so this is the plain version."
         except Exception as e:   # the list is still useful without the model's words
             note = f"Muse Spark could not be reached ({type(e).__name__}), so this is the plain version."
     if not picked:
         picked = [{**c, "look_for": LOOK_FOR[c["kind"]], "why": _why(c)} for c in cands[:n]]
+        if lang["code"] != "en":
+            note = (note + " " if note else "") + f"Writing it in {lang['name']} needs Muse Spark, so it is in English."
     if not intro and picked:
         intro = (f"{len(picked)} stop{'s' if len(picked) != 1 else ''}, most important first. Distances are straight lines from the previous "
                  "stop; the real way will be longer.")
-    a.checklist = {"source": source, "intro": intro, "note": note, "safety": SAFETY, "stops": _finish(a, picked),
+    a.checklist = {"source": source, "intro": intro, "note": note, "safety": labels["safety"],
+               "language": written_in, "asked_language": lang["code"], "labels": labels,
+               "stops": _finish(a, picked),
                "candidates": len(cands), "made": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
                "based_on": a.evidence_mark()}
     return a.checklist
@@ -241,7 +293,7 @@ def make_checklist(a: Analysis, use_model: bool = True) -> dict:
 def current(a: Analysis) -> dict:
     """The checklist to export: a plain one is made (free) when there is none, or redone when it is out of date."""
     if not a.checklist or (a.checklist["source"] == "template" and a.checklist["based_on"] != a.evidence_mark()):
-        make_checklist(a, use_model=False)
+        make_checklist(a, use_model=False, language=(a.checklist or {}).get("asked_language", "en"))
     return a.checklist
 
 
@@ -249,22 +301,31 @@ def current(a: Analysis) -> dict:
 # exports
 # ---------------------------------------------------------------------------------------------------
 
-def title(s: dict) -> str:
-    return f"{s['rank']}. {s['kind'].capitalize()}, {_ha(s['area_ha'])}"
+def _lab(fl: dict | None) -> dict:
+    return (fl or {}).get("labels") or LABELS
 
 
-def _checks_line(s: dict) -> str:
-    parts = []
-    if s["confidence"]:
-        parts.append(f"satellite rules: {CONFIDENCE_WORDS[s['confidence']]}")
-    else:
-        parts.append("satellite rules: not marked")
+def kind_name(kind: str, fl: dict | None = None) -> str:
+    return _lab(fl).get("kind_" + kind.replace(" ", "_"), kind)
+
+
+def title(s: dict, fl: dict | None = None) -> str:
+    k = kind_name(s["kind"], fl)
+    return f"{s['rank']}. {k[:1].upper() + k[1:]}, {_ha(s['area_ha'])}"
+
+
+def _checks_line(s: dict, fl: dict | None = None) -> str:
+    lab = _lab(fl)
+
+    def verdict(v):
+        return lab.get("v_" + v.replace(" ", "_"), v)
+    parts = [f"{lab['rules']}: {lab['conf_' + s['confidence']] if s['confidence'] else lab['not_marked']}"]
     if s["visual_check"]:
-        parts.append(f"Muse Spark: {s['visual_check']}")
+        parts.append(f"Muse Spark: {verdict(s['visual_check'])}")
     if s["sam_witness"]:
-        parts.append(f"SAM 3.1: {s['sam_witness']}")
+        parts.append(f"SAM 3.1: {verdict(s['sam_witness'])}")
     elif s["source"] == "only SAM":
-        parts.append("SAM 3.1: saw it")
+        parts.append(f"SAM 3.1: {lab['saw_it']}")
     return "; ".join(parts)
 
 
@@ -276,8 +337,8 @@ def geojson(a: Analysis) -> dict:
     fl = current(a)
     feats = []
     for s in fl["stops"]:
-        props = {"rank": s["rank"], "name": title(s), "kind": s["kind"], "area_ha": s["area_ha"],
-                 "look_for": s["look_for"], "why": s["why"], "checks": _checks_line(s),
+        props = {"rank": s["rank"], "name": title(s, fl), "kind": s["kind"], "area_ha": s["area_ha"],
+                 "look_for": s["look_for"], "why": s["why"], "checks": _checks_line(s, fl),
                  "km_from_previous": s["km_from_previous"], "google_maps": s["links"]["google_maps"]}
         feats.append({"type": "Feature", "geometry": {"type": "Point", "coordinates": s["point"]},
                       "properties": {"role": "stop", **props}})
@@ -285,8 +346,8 @@ def geojson(a: Analysis) -> dict:
         g = _outline(a, s["region_id"]) if s["region_id"] else None
         if g:
             feats.append({"type": "Feature", "geometry": g,
-                          "properties": {"role": "outline", "rank": s["rank"], "name": title(s)}})
-    return {"type": "FeatureCollection", "name": "What Changed Here field checklist",
+                          "properties": {"role": "outline", "rank": s["rank"], "name": title(s, fl)}})
+    return {"type": "FeatureCollection", "name": "What Changed Here field checklist", "language": fl["language"],
             "dates": {"before": str(a.before), "after": str(a.after)}, "features": feats}
 
 
@@ -307,25 +368,26 @@ def _kml_polygons(g: dict) -> str:
 
 def kml(a: Analysis) -> str:
     fl = current(a)
-    marks, outlines = [], []
+    lab, marks, outlines = _lab(fl), [], []
     for s in fl["stops"]:
-        desc = (f"Look for: {s['look_for']}\nWhy: {s['why']}\nChecks: {_checks_line(s)}\n"
-                f"Point: {s['point'][1]}, {s['point'][0]} (latitude, longitude)")
-        marks.append(f"<Placemark><name>{escape(title(s))}</name><description>{escape(desc)}</description>"
+        desc = (f"{lab['look_for']}: {s['look_for']}\n{lab['why']}: {s['why']}\n{lab['checks']}: "
+                f"{_checks_line(s, fl)}\n{s['point'][1]}, {s['point'][0]} ({lab['lat_lon']})")
+        marks.append(f"<Placemark><name>{escape(title(s, fl))}</name><description>{escape(desc)}</description>"
                      f"<styleUrl>#stop</styleUrl><Point><coordinates>{s['point'][0]},{s['point'][1]}</coordinates>"
                      "</Point></Placemark>")
         g = _outline(a, s["region_id"]) if s["region_id"] else None
         if g:
-            outlines.append(f"<Placemark><name>{escape(title(s))}</name><styleUrl>#outline</styleUrl>"
+            outlines.append(f"<Placemark><name>{escape(title(s, fl))}</name><styleUrl>#outline</styleUrl>"
                             f"{_kml_polygons(g)}</Placemark>")
     return ('<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document>'
-            f"<name>Field checklist {a.before} to {a.after}</name>"
-            f"<description>{escape(fl['intro'] + ' ' + SAFETY)}</description>"
+            f"<name>{escape(lab['title'])} {a.before}, {a.after}</name>"
+            f"<description>{escape(fl['intro'] + ' ' + fl['safety'])}</description>"
             '<Style id="stop"><IconStyle><color>ff2e8cf0</color><scale>1.2</scale></IconStyle></Style>'
             '<Style id="outline"><LineStyle><color>ff00ffff</color><width>2</width></LineStyle>'
             "<PolyStyle><fill>0</fill></PolyStyle></Style>"
-            "<Folder><name>Stops, most important first</name>" + "".join(marks) + "</Folder>"
-            "<Folder><name>Patch outlines</name>" + "".join(outlines) + "</Folder></Document></kml>\n")
+            f"<Folder><name>{escape(lab['stops_folder'])}</name>" + "".join(marks) + "</Folder>"
+            f"<Folder><name>{escape(lab['outlines_folder'])}</name>" + "".join(outlines) +
+            "</Folder></Document></kml>\n")
 
 
 def _font(size: int):
@@ -365,7 +427,7 @@ def overview_png(a: Analysis, long_side: int = 1000) -> bytes:
 PAGE_CSS = """
 body{font:14px/1.45 system-ui,Segoe UI,Roboto,sans-serif;color:#111;background:#fff;margin:24px auto;max-width:860px;padding:0 16px}
 h1{font-size:22px;margin:0 0 4px}h2{font-size:17px;margin:0 0 6px}
-.muted{color:#555}.small{font-size:12.5px}
+.muted{color:#555}.small{font-size:12.5px}.info div{margin:2px 0}
 .bar{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}
 .bar a,.bar button{font:inherit;padding:6px 12px;border:1px solid #333;border-radius:6px;background:#fff;color:#111;
   text-decoration:none;cursor:pointer}
@@ -382,48 +444,46 @@ h1{font-size:22px;margin:0 0 4px}h2{font-size:17px;margin:0 0 6px}
 def page(a: Analysis) -> str:
     """A printable page: overview map, then one block per stop with a small form to fill in on the ground."""
     fl = current(a)
-    e = html.escape
-    rid = a.id
+    lab, e, rid = _lab(fl), html.escape, a.id
+    lang = languages.get(fl.get("language", "en"))
     blocks = []
     for s in fl["stops"]:
         lon, lat = s["point"]
-        size = f"About {s['size_m'][0]} m by {s['size_m'][1]} m. " if s["size_m"] else ""
-        dist = f"{s['km_from_previous']} km from stop {s['rank'] - 1} in a straight line." \
-            if s["km_from_previous"] is not None else ""
+        facts = [f"{lab['size']}: {s['size_m'][0]} m × {s['size_m'][1]} m" if s["size_m"] else "",
+                 f"{lab['distance']}: {s['km_from_previous']} km" if s["km_from_previous"] is not None else ""]
         crop = (f'<img class="crop" src="/api/analyze/{e(rid)}/crop/{s["region_id"]}" alt="Before and after">'
-                if s["region_id"] else '<p class="muted small">No picture: only SAM 3.1 marked this place.</p>')
+                if s["region_id"] else f'<p class="muted small">{e(lab["no_picture"])}</p>')
         blocks.append(
-            f'<section class="stop"><h2>{e(title(s))}</h2>'
-            f'<div class="where">{lat:.5f}, {lon:.5f}</div>'
-            f'<div class="small muted">latitude, longitude. {e(size)}{e(dist)} '
+            f'<section class="stop"><h2>{e(title(s, fl))}</h2>'
+            f'<div class="where" dir="ltr">{lat:.5f}, {lon:.5f}</div>'
+            f'<div class="small muted">{e(lab["lat_lon"])}. {e(". ".join(f for f in facts if f))} '
             f'<a href="{e(s["links"]["google_maps"])}">Google Maps</a> · '
             f'<a href="{e(s["links"]["openstreetmap"])}">OpenStreetMap</a></div>'
-            f'<p><b>Look for:</b> {e(s["look_for"])}</p><p><b>Why:</b> {e(s["why"])}</p>'
-            f'<p class="small muted">Checks: {e(_checks_line(s))}</p>{crop}'
-            '<div class="form"><b>What you found:</b> <span>☐ as on the map</span><span>☐ something else</span>'
-            '<span>☐ could not reach</span></div><div class="line"></div><div class="line"></div></section>')
-    asked = f"<p><b>Question:</b> {e(a.question)}</p>" if a.question else ""
-    place = f" near {e(a.plan['place'])}" if a.plan.get("place") else ""
-    written = "Muse Spark" if fl["source"] == "muse-spark" else "plain templates (no Muse Spark)"
+            f'<p><b>{e(lab["look_for"])}:</b> {e(s["look_for"])}</p><p><b>{e(lab["why"])}:</b> {e(s["why"])}</p>'
+            f'<p class="small muted">{e(lab["checks"])}: {e(_checks_line(s, fl))}</p>{crop}'
+            f'<div class="form"><b>{e(lab["found"])}:</b> <span>☐ {e(lab["as_on_map"])}</span>'
+            f'<span>☐ {e(lab["something_else"])}</span><span>☐ {e(lab["could_not_reach"])}</span></div>'
+            '<div class="line"></div><div class="line"></div></section>')
     w, s_, east, n = a.bbox
-    empty = "" if fl["stops"] else "<p>No changed patch of 1 ha or more was found, so there is nothing to visit.</p>"
+    written = "Muse Spark" if fl["source"] == "muse-spark" else "plain templates (no Muse Spark)"
+    head = [(lab["place"], a.plan.get("place")), (lab["question"], a.question),
+            (lab["dates"], f"{a.before}, {a.after}"),
+            (lab["area"], f"{s_:.4f}, {w:.4f} → {n:.4f}, {east:.4f}"),
+            (lab["made"], fl["made"]), (lab["written_by"], written)]
+    info = "".join(f"<div><b>{e(k)}:</b> <span>{e(str(v))}</span></div>" for k, v in head if v)
+    empty = "" if fl["stops"] else f"<p>{e(lab['nothing'])}</p>"
     return (
-        '<!doctype html><html lang="en"><head><meta charset="utf-8">'
-        '<meta name="viewport" content="width=device-width, initial-scale=1">'
-        f"<title>Field checklist</title><style>{PAGE_CSS}</style></head><body>"
-        f"<h1>Field checklist{place}</h1>"
-        f'<p class="muted">Satellite images of {a.before} and {a.after}. Area {s_:.4f}, {w:.4f} to {n:.4f}, '
-        f"{east:.4f}. Made {e(fl['made'])}, written by {written}.</p>{asked}"
+        f'<!doctype html><html lang="{lang["code"]}" dir="{"rtl" if lang["rtl"] else "ltr"}"><head>'
+        '<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
+        f"<title>{e(lab['title'])}</title><style>{PAGE_CSS}</style></head><body>"
+        f"<h1>{e(lab['title'])}</h1><div class=\"muted info\">{info}</div>"
         f"<p>{e(fl['intro'])}</p>"
         + (f'<p class="small muted">{e(fl["note"])}</p>' if fl["note"] else "")
-        + '<div class="bar"><button onclick="print()">Print</button>'
-        f'<a href="/api/analyze/{e(rid)}/field.kml" download>KML for phones</a>'
+        + f'<div class="bar"><button onclick="print()">{e(lab["print"])}</button>'
+        f'<a href="/api/analyze/{e(rid)}/field.kml" download>{e(lab["kml"])}</a>'
         f'<a href="/api/analyze/{e(rid)}/field.geojson" download>GeoJSON</a></div>'
-        f'<div class="safety"><b>Safety.</b> {e(SAFETY)}</div>'
+        f'<div class="safety"><b>{e(lab["safety_title"])}.</b> {e(fl["safety"])}</div>'
         + (f'<img class="overview" src="/api/analyze/{e(rid)}/field/map.png" alt="Map of the stops">'
-           '<p class="small muted">After image. Numbers are the stops, yellow lines their outlines, grey had no '
-           "clear image in both periods.</p>" if fl["stops"] else "")
+           f'<p class="small muted">{e(lab["overview_caption"])}</p>' if fl["stops"] else "")
         + empty + "".join(blocks)
-        + '<p class="small muted">From Sentinel-2 at about 20 m per pixel: a single house is smaller than one pixel, '
-          "and an edge can be off by a pixel. Order is by importance, not by road. Made with What Changed Here.</p>"
-          "</body></html>")
+        + f'<p class="small muted">{e(lab["footer"])} Made with What Changed Here.</p></body></html>')

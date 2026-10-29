@@ -82,6 +82,31 @@ def look(question: str, images: list[tuple[str, np.ndarray]], schema: dict | Non
 
 
 # ---------------------------------------------------------------------------------------------------
+# Muse Voice Transcribe
+# ---------------------------------------------------------------------------------------------------
+
+def transcribe(wav: bytes, language_bias: list[str] | None = None, keywords: list[str] | None = None) -> dict:
+    """One recording to text: POST /v1/asr/transcribe, multipart with a JSON `request` part and a WAV `audio` part.
+
+    The audio must be mono 16 bit PCM WAV at 16 or 24 kHz. Returns {"transcript", "audioDurationMs", ...}.
+    Docs: https://dev.meta.ai/docs/api-reference/voice/transcribe
+    """
+    import requests
+    req = {"model": C.META_VOICE_MODEL, "audioEncoding": "WAV", "mode": "PUSH_TO_TALK"}
+    if language_bias:
+        req["languageBias"] = language_bias
+    if keywords:
+        req["keywords"] = keywords
+    r = requests.post(C.META_BASE_URL.rstrip("/") + "/asr/transcribe",
+                      headers={"Authorization": f"Bearer {C.META_API_KEY}", "Accept": "application/json"},
+                      files={"request": (None, json.dumps(req), "application/json"),
+                             "audio": ("question.wav", wav, "audio/wav")},
+                      timeout=C.META_TIMEOUT)
+    r.raise_for_status()
+    return r.json()
+
+
+# ---------------------------------------------------------------------------------------------------
 # SAM 3.1
 # ---------------------------------------------------------------------------------------------------
 

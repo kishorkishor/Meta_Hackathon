@@ -11,7 +11,8 @@ const OVERLAYS = ["change", "refined", "agreement"];   // the layers the opacity
 const AGREEMENT = { "SAM and rules agree": "rgb(46,204,113)", "only the rules": "rgb(241,196,15)",
                     "only SAM": "rgb(155,89,182)" };
 
-const state = { bbox: null, run: null, overlays: {}, regionsLayer: null, drawing: null, health: {}, gen: 0, busy: false };
+const state = { bbox: null, run: null, overlays: {}, regionsLayer: null, drawing: null, health: {}, gen: 0, busy: false,
+                lang: "en", languages: [] };
 
 // fetch JSON; throws an Error with the server's reason on any failure
 async function api(url, options) {
@@ -127,7 +128,7 @@ $("#plain-form").addEventListener("submit", async (ev) => {
   let p = null;
   try {
     p = await api("/api/plan", { method: "POST", headers: { "Content-Type": "application/json" },
-                                 body: JSON.stringify({ question: q }) });
+                                 body: JSON.stringify({ question: q, language: state.lang }) });
   } catch (e) {
     if (gen === state.gen) $("#plan").textContent = e.message;
   } finally {
@@ -285,8 +286,14 @@ function renderReport(a) {
   $("#question-echo").hidden = !a.question;
   $("#question-echo").textContent = a.question ? `You asked: ${a.question}` : "";
   $("#report").textContent = a.report || "";
-  $("#report-source").textContent = a.report_source === "muse-spark" ? "Muse Spark" : "automatic summary";
+  const written = a.report_source === "muse-spark" ? (a.report_language || "en") : "en";
+  $("#report").lang = written;
+  $("#report-source").textContent = a.report_source === "muse-spark"
+    ? "Muse Spark" + (written !== "en" ? ` · ${lang(written).native}` : "") : "automatic summary";
   const meta = state.health.meta;
+  $("#write").textContent = a.report_source === "muse-spark"
+    ? (written === state.lang ? "Ask Muse Spark to write it again" : `Write it again in ${lang(state.lang).native}`)
+    : "Ask Muse Spark for the report" + (state.lang !== "en" ? ` in ${lang(state.lang).native}` : "");
   $("#write").disabled = !meta;
   $("#write").title = meta ? $("#write").title : "Set MODEL_API_KEY to use Muse Spark and SAM 3.1";
   $("#ask").hidden = !(meta && a.report_source === "muse-spark");
@@ -424,8 +431,9 @@ $("#witness").addEventListener("click", async () => {
 function renderField(a) {
   const fl = a.checklist || {};
   const meta = state.health.meta;
-  $("#field").textContent = meta ? (fl.stops ? "Have Muse Spark make it again" : "Have Muse Spark make a field checklist")
-    : "Make a field checklist (plain version)";
+  const inLang = state.lang !== "en" ? ` in ${lang(state.lang).native}` : "";
+  $("#field").textContent = meta ? (fl.stops ? `Have Muse Spark make it again${inLang}`
+    : `Have Muse Spark make a field checklist${inLang}`) : "Make a field checklist (plain version)";
   $("#field").disabled = false;
   const list = $("#stops");
   list.innerHTML = "";
@@ -436,20 +444,24 @@ function renderField(a) {
   $("#field-kml").href = `/api/analyze/${a.id}/field.kml`;
   $("#field-geojson").href = `/api/analyze/${a.id}/field.geojson`;
   $("#field-summary").textContent = [fl.intro, fl.note,
-    fl.source === "muse-spark" ? "" : "Plain version, written without Muse Spark.",
+    fl.source === "muse-spark" ? (fl.language && fl.language !== "en" ? `Written in ${lang(fl.language).native}.` : "")
+      : "Plain version, written without Muse Spark.",
     a.checklist_stale ? "New checks came in after this list was made; make it again to use them." : ""]
     .filter(Boolean).join(" ");
   if (!fl.stops.length) list.append(el("li", "No changed patch of 1 ha or more, so there is nothing to visit.", "muted"));
   state.stopsLayer = L.layerGroup().addTo(map);
+  const labels = fl.labels || {};
+  const kind = (k) => labels["kind_" + k.replace(/ /g, "_")] || k;
   for (const s of fl.stops) {
     const [lon, lat] = s.point;
     L.marker([lat, lon], { icon: L.divIcon({ className: "stop-pin", html: String(s.rank), iconSize: [24, 24] }) })
-      .bindTooltip(`${s.rank}. ${s.kind}, ${s.area_ha} ha`).addTo(state.stopsLayer);
+      .bindTooltip(`${s.rank}. ${kind(s.kind)}, ${s.area_ha} ha`).addTo(state.stopsLayer);
     const li = el("li");
-    li.append(el("b", `${s.rank}. `), `${s.kind}, ${s.area_ha} ha`,
+    li.append(el("b", `${s.rank}. `), `${kind(s.kind)}, ${s.area_ha} ha`,
               el("div", `${lat.toFixed(5)}, ${lon.toFixed(5)}` +
                  (s.km_from_previous != null ? ` · ${s.km_from_previous} km from stop ${s.rank - 1}` : ""), "meta"),
-              el("div", `Look for: ${s.look_for}`, "meta"), el("div", `Why: ${s.why}`, "meta"));
+              el("div", `${labels.look_for || "Look for"}: ${s.look_for}`, "meta"),
+              el("div", `${labels.why || "Why"}: ${s.why}`, "meta"));
     li.addEventListener("click", () => map.setView([lat, lon], 15));
     list.append(li);
   }
@@ -463,7 +475,7 @@ $("#field").addEventListener("click", async () => {
   $("#field-summary").textContent = state.health.meta
     ? "Muse Spark is choosing the stops and writing what to look for…" : "Making the list…";
   try {
-    const j = await api(`/api/analyze/${run.id}/field`, { method: "POST" });
+    const j = await api(`/api/analyze/${run.id}/field?language=${state.lang}`, { method: "POST" });
     if (current()) show(j);
   } catch (e) {
     if (current()) { $("#field-summary").textContent = e.message; $("#field").disabled = false; }
@@ -481,7 +493,7 @@ async function writeReport() {
   $("#write").disabled = true;
   $("#report").textContent = "Muse Spark is checking the largest patches and writing the report…";
   try {
-    const j = await api(`/api/analyze/${run.id}/report`, { method: "POST" });
+    const j = await api(`/api/analyze/${run.id}/report?language=${state.lang}`, { method: "POST" });
     if (current()) show(j);
   } catch (e) {
     if (current()) $("#report").textContent = `${e.message}\n\n${previous}`;
@@ -497,18 +509,140 @@ $("#ask").addEventListener("submit", async (ev) => {
   const runId = state.run.id;
   const box = document.createElement("div");
   box.className = "answer";
-  box.innerHTML = `<b></b><span>Thinking…</span>`;
+  box.innerHTML = `<b dir="auto"></b><span dir="auto">Thinking…</span>`;
   box.querySelector("b").textContent = q;
   $("#answers").prepend(box);
   $("#question").value = "";
   try {
     const j = await api(`/api/analyze/${runId}/ask`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: q }) });
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: q, language: state.lang }) });
     box.querySelector("span").textContent = j.answer;
+    box.querySelector("span").lang = j.language || "en";
   } catch (e) {
     box.querySelector("span").textContent = e.message;
   }
 });
+
+// ---------- language ----------
+function lang(code) {
+  return state.languages.find((l) => l.code === code) || { code, name: code, native: code, voice: false };
+}
+
+async function loadLanguages() {
+  try { state.languages = await api("/api/languages"); } catch (e) { state.languages = [lang("en")]; }
+  let saved = "en";
+  try { saved = localStorage.getItem("wch-lang") || "en"; } catch (e) { /* private mode */ }
+  if (!state.languages.some((l) => l.code === saved)) saved = "en";
+  for (const l of state.languages) {
+    $("#lang").add(new Option(l.code === "en" ? l.native : `${l.native} (${l.name})`, l.code));
+  }
+  setLanguage(saved);
+}
+
+function setLanguage(code) {
+  state.lang = code;
+  $("#lang").value = code;
+  try { localStorage.setItem("wch-lang", code); } catch (e) { /* private mode */ }
+  const l = lang(code);
+  const tip = l.voice ? `Speak your question${code !== "en" ? " in " + l.native : ""}`
+    : `Speak your question. ${l.name} is not one of the languages Muse Voice Transcribe was tested on, ` +
+      "so it may mishear; typing always works.";
+  ["#plain-mic", "#ask-mic"].forEach((s) => { $(s).title = tip; });
+  if (state.run && state.run.status === "done") { renderReport(state.run); renderField(state.run); }
+}
+$("#lang").addEventListener("change", () => setLanguage($("#lang").value));
+
+// ---------- voice questions (Muse Voice Transcribe) ----------
+// The browser records in its own format; the service takes mono 16 bit WAV, so the sound is decoded,
+// mixed down and resampled to 16 kHz here before it is sent.
+async function toWav16k(blob) {
+  const ctx = new AudioContext();
+  let audio;
+  try { audio = await ctx.decodeAudioData(await blob.arrayBuffer()); } finally { ctx.close(); }
+  const rate = 16000;
+  const off = new OfflineAudioContext(1, Math.max(1, Math.ceil(audio.duration * rate)), rate);
+  const src = off.createBufferSource();
+  src.buffer = audio;
+  src.connect(off.destination);
+  src.start();
+  const pcm = (await off.startRendering()).getChannelData(0);
+  const v = new DataView(new ArrayBuffer(44 + pcm.length * 2));
+  const tag = (at, t) => [...t].forEach((c, i) => v.setUint8(at + i, c.charCodeAt(0)));
+  tag(0, "RIFF"); v.setUint32(4, 36 + pcm.length * 2, true); tag(8, "WAVE"); tag(12, "fmt ");
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, rate, true);
+  v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  tag(36, "data"); v.setUint32(40, pcm.length * 2, true);
+  for (let i = 0; i < pcm.length; i++) {
+    const x = Math.max(-1, Math.min(1, pcm[i]));
+    v.setInt16(44 + i * 2, x < 0 ? x * 0x8000 : x * 0x7fff, true);
+  }
+  return new Blob([v], { type: "audio/wav" });
+}
+
+const voice = { rec: null, timer: null };
+const MAX_VOICE_S = 60;
+
+function voiceNote(note, text, bad = false) {
+  note.hidden = !text;
+  note.textContent = text || "";
+  note.classList.toggle("bad", bad);
+}
+
+// One press starts, the next press stops (or a minute passes). The words go into the box to check before asking.
+async function toggleVoice(btn, input, note, action) {
+  if (voice.rec) { voice.rec.stop(); return; }
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true } });
+  } catch (e) {
+    voiceNote(note, "The microphone is blocked or missing. Allow it in the browser, or type the question.", true);
+    return;
+  }
+  const rec = new MediaRecorder(stream);
+  const chunks = [];
+  const t0 = Date.now();
+  rec.ondataavailable = (ev) => { if (ev.data.size) chunks.push(ev.data); };
+  rec.onstop = async () => {
+    stream.getTracks().forEach((t) => t.stop());
+    clearInterval(voice.timer);
+    voice.rec = null;
+    btn.classList.remove("recording");
+    btn.setAttribute("aria-label", "Speak your question");
+    if ((Date.now() - t0) < 400) { voiceNote(note, "Too short. Press once, speak, then press again.", true); return; }
+    voiceNote(note, "Muse Voice Transcribe is listening to the recording…");
+    btn.disabled = true;
+    try {
+      const wav = await toWav16k(new Blob(chunks, { type: rec.mimeType }));
+      const run = state.run ? `&run_id=${state.run.id}` : "";
+      const j = await api(`/api/transcribe?language=${state.lang}${run}`,
+                          { method: "POST", headers: { "Content-Type": "audio/wav" }, body: wav });
+      if (!j.text) { voiceNote(note, "Nothing was heard. Try again a little closer to the microphone.", true); return; }
+      input.value = j.text;
+      input.focus();
+      voiceNote(note, `Heard ${j.seconds} s. Check the words, fix any name it misheard, then press ${action}.`);
+    } catch (e) {
+      voiceNote(note, e.message, true);
+    } finally {
+      btn.disabled = false;
+    }
+  };
+  voice.rec = rec;
+  rec.start();
+  btn.classList.add("recording");
+  btn.setAttribute("aria-label", "Stop recording");
+  const tick = () => {
+    const sec = Math.floor((Date.now() - t0) / 1000);
+    voiceNote(note, `Listening… ${sec} s. Press the microphone again to stop.`);
+    if (sec >= MAX_VOICE_S && voice.rec) voice.rec.stop();
+  };
+  tick();
+  voice.timer = setInterval(tick, 250);
+}
+$("#plain-mic").addEventListener("click", () =>
+  toggleVoice($("#plain-mic"), $("#plain"), $("#plain-voice"), "Find it and compare"));
+$("#ask-mic").addEventListener("click", () =>
+  toggleVoice($("#ask-mic"), $("#question"), $("#ask-voice"), "Ask"));
 
 // ---------- theme ----------
 function setTheme(t) {
@@ -521,6 +655,10 @@ try { const t = localStorage.getItem("wch-theme"); if (t) setTheme(t); } catch (
 
 (async () => {
   try { state.health = await api("/api/health"); } catch (e) { state.health = {}; }
+  const canRecord = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder &&
+                       window.OfflineAudioContext);
+  $("#plain-mic").hidden = $("#ask-mic").hidden = !(state.health.meta && canRecord);
+  await loadLanguages();
   if (!state.health.meta) {
     $("#plain").disabled = $("#plain-go").disabled = true;
     $("#plain").placeholder = "Needs a Meta API key. Use an example or draw an area below.";

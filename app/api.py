@@ -5,7 +5,7 @@
     GET  /api/analyze/{id}            status, then layers, regions, totals and the report
     GET  /api/analyze/{id}/layer/{n}  PNG overlay: before, after, change, unseen, refined
     GET  /api/analyze/{id}/crop/{r}   before/after crops of one region (PNG, side by side)
-    POST /api/analyze/{id}/report     Muse Spark writes the report (checks and SAM outlines on the way)
+    POST /api/analyze/{id}/report     Muse Spark writes the report (checks and SAM outlines on the way); ?language=
     POST /api/analyze/{id}/ask        a follow-up question
     POST /api/analyze/{id}/refine     SAM 3.1 outlines only
     POST /api/analyze/{id}/check      Muse Spark looks at every big patch and agrees, disagrees or is unsure
@@ -13,6 +13,8 @@
     POST /api/analyze/{id}/field      field checklist: where to go first, what to look for, why
     GET  /api/analyze/{id}/field.kml, field.geojson, field/map.png   the checklist for phones and print
     GET  /field/{id}                  the printable checklist page
+    POST /api/transcribe              a spoken question (WAV) -> text, by Muse Voice Transcribe
+    GET  /api/languages               languages for reports, answers, plans and the checklist
     GET  /api/demos                   prepared places
     GET  /api/health
 """
@@ -26,13 +28,14 @@ from contextlib import contextmanager
 from datetime import date
 
 import numpy as np
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 from pydantic import BaseModel, Field, field_validator
 
-from app import analysis, config as C, firms, meta_client
+from app import analysis, config as C, firms, languages, meta_client
 from app.demos import DEMOS
 
 app = FastAPI(title="What Changed Here")
@@ -56,11 +59,29 @@ class AnalyzeIn(BaseModel):
         return v
 
 
-class AskIn(BaseModel):
+def _lang(code: str) -> str:
+    try:
+        return languages.get(code)["code"]
+    except KeyError:
+        raise HTTPException(422, f"unknown language {code!r}")
+
+
+class _WithLanguage(BaseModel):
+    language: str = Field(default="en", max_length=8)
+
+    @field_validator("language")
+    @classmethod
+    def _known(cls, v):
+        if v.strip().lower() not in languages.BY_CODE:
+            raise ValueError(f"unknown language {v!r}")
+        return v.strip().lower()
+
+
+class AskIn(_WithLanguage):
     question: str = Field(min_length=2, max_length=1000)
 
 
-class PlanIn(BaseModel):
+class PlanIn(_WithLanguage):
     question: str = Field(min_length=4, max_length=500)
 
 
@@ -104,6 +125,39 @@ def health():
             "chat_model": C.META_CHAT_MODEL, "sam_model": C.META_SAM_MODEL, "max_area_km2": C.MAX_AREA_KM2}
 
 
+@app.get("/api/languages")
+def language_list():
+    return languages.LANGUAGES
+
+
+MAX_WAV_BYTES = 3_200_000   # 60 s at 24 kHz, 16 bit mono, with room for the header
+
+
+@app.post("/api/transcribe")
+async def transcribe(request: Request, language: str = "en", run_id: str | None = None):
+    """A spoken question as WAV in the body. The text goes back to the page, which shows it before asking."""
+    from app import voice
+    lang = _lang(language)
+    _need_meta()
+    if int(request.headers.get("content-length") or 0) > MAX_WAV_BYTES:
+        raise HTTPException(413, "the recording is too long; a question can be at most a minute")
+    data = await request.body()
+    if len(data) > MAX_WAV_BYTES:
+        raise HTTPException(413, "the recording is too long; a question can be at most a minute")
+    try:
+        voice.check_wav(data)
+    except voice.VoiceError as e:
+        raise HTTPException(400, str(e))
+    if not voice.allow():
+        raise HTTPException(429, "the demo has heard many questions this hour; please type yours")
+    a = analysis.RUNS.get(run_id or "")
+    places = [a.plan.get("place", "")] if a and a.plan else []
+    try:
+        return await run_in_threadpool(voice.transcribe, data, lang, places)
+    except Exception as e:
+        raise HTTPException(502, f"Muse Voice Transcribe call failed: {type(e).__name__}: {e}")
+
+
 @app.get("/api/demos")
 def demos():
     return DEMOS
@@ -117,7 +171,7 @@ def make_plan(body: PlanIn):
     if not planner.allow():
         raise HTTPException(429, "the demo has answered many questions this hour; try again later or draw an area")
     try:
-        p = planner.plan(body.question.strip())
+        p = planner.plan(body.question.strip(), body.language)
     except planner.PlanError as e:
         raise HTTPException(422, str(e))
     except Exception as e:
@@ -182,14 +236,15 @@ def _spend(a: analysis.Analysis, counter: str, limit: int, what: str):
 
 
 @app.post("/api/analyze/{run_id}/report")
-def report(run_id: str):
+def report(run_id: str, language: str = "en"):
     a = _done(run_id)
+    language = _lang(language)
     _need_meta()
     from app.agent import write_report
     with _hold(a):
         _spend(a, "reports_made", C.MAX_REPORTS_PER_RUN, "report")
         try:
-            write_report(a)
+            write_report(a, language)
         except Exception as e:
             raise HTTPException(502, f"Muse Spark call failed: {type(e).__name__}: {e}")
         analysis.save(a)
@@ -204,7 +259,7 @@ def ask(run_id: str, body: AskIn):
     with _hold(a):
         _spend(a, "questions_asked", C.MAX_QUESTIONS_PER_RUN, "question")
         try:
-            return {"answer": agent_ask(a, body.question)}
+            return {"answer": agent_ask(a, body.question, body.language), "language": body.language}
         except Exception as e:
             raise HTTPException(502, f"Muse Spark call failed: {type(e).__name__}: {e}")
 
@@ -255,15 +310,16 @@ def witness(run_id: str):
 
 
 @app.post("/api/analyze/{run_id}/field")
-def field_checklist(run_id: str):
+def field_checklist(run_id: str, language: str = "en"):
     """Where to go first. Muse Spark chooses and writes it when there is a key; the plain version is free."""
     a = _done(run_id)
+    language = _lang(language)
     from app.fieldlist import make_checklist
     with _hold(a):
         use_model = meta_client.available()
         if use_model:
             _spend(a, "fieldlists_made", C.MAX_FIELDLISTS_PER_RUN, "field checklist")
-        make_checklist(a, use_model=use_model)
+        make_checklist(a, use_model=use_model, language=language)
         analysis.save(a)
         return a.summary()
 

@@ -121,13 +121,27 @@ and three tools (OpenStreetMap place search, a Sentinel-2 scene count with whole
 turns a question into an area, two dates and a reason. The plan must pass the same limits as the map form;
 a plan that fails goes back with the reason. At most 10 turns per plan and 40 plans an hour per server.
 
+**Your language** (built during the hackathon). The page offers 15 languages. For any but English the prompts
+of the report, the answers, the plan and the field checklist add one line: write for the reader in that
+language, keep digits 0 to 9, patch numbers, coordinates, dates and model names as given, so the text matches the
+map. The field checklist also sends its fixed page words (about 40 labels, kind names included) in the same
+structured output call; each label that comes back empty stays English. A plain checklist made without Muse Spark
+stays English and says so. Urdu and Arabic pages are set right to left, with coordinates kept left to right.
+
+**Voice questions** (built during the hackathon). The browser records, then decodes the recording, mixes it to
+one channel and resamples it to 16 kHz 16 bit WAV, the format Muse Voice Transcribe takes. The server checks the
+file (WAV, mono, 16 bit, 16 or 24 kHz, 0.3 to 60 seconds) before anything is sent, then calls `/v1/asr/transcribe`
+in push to talk mode with the language as languageBias (only for the languages the service was evaluated on; for
+Urdu, Greek and Swahili it detects the language itself) and a few keywords such as the place being looked at. The
+text goes into the question box, not straight into a question, so a misheard place name can be fixed first.
+
 **Muse Spark** works as the analyst through tool calls: facts, region details, the visual check (chosen
 patches, or every big patch as above), SAM outlines, the SAM second witness and NASA FIRMS fires. It may only use numbers its tools returned. The loop stops after 8 steps.
 Without a Meta key the app still works and writes a plain automatic summary from the same facts.
 
 **Limits.** Two analyses download at once and up to eight wait in line; each analysis allows 3 Muse Spark
 reports, 3 SAM refinements, 3 visual check runs, 2 second witness runs, 3 field checklists and 30 questions,
-one at a time.
+one at a time. The server takes at most 40 planned questions and 120 voice recordings an hour.
 
 ## 7. What it cannot do
 

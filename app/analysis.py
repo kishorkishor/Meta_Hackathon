@@ -56,6 +56,7 @@ class Analysis:
     fieldlists_made: int = 0
     report: str = ""
     report_source: str = ""
+    report_language: str = "en"                       # language code the report was written in
     chat: list = field(default_factory=list)
     question: str = ""                                # set when the run came from a question in plain words
     plan: dict = field(default_factory=dict)          # Muse Spark's plan for that question (place, dates, why)
@@ -92,6 +93,7 @@ class Analysis:
             out["checklist_stale"] = bool(self.checklist) and self.checklist.get("based_on") != self.evidence_mark()
             out["report"] = self.report
             out["report_source"] = self.report_source
+            out["report_language"] = self.report_language
         return out
 
 
